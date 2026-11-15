@@ -37,10 +37,24 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65535)
 
-    # Used from Step 2 onwards. Kept secret because the URL contains a password.
+    # Database. URLs are secret because they contain passwords.
+    # The app connects as `sentinel_app` (DML only, cannot UPDATE/DELETE audit_log).
     database_url: SecretStr = SecretStr(
-        "postgresql+asyncpg://sentinel:sentinel@localhost:5432/sentinel"
+        "postgresql+asyncpg://sentinel_app:sentinel-app-dev-only@localhost:5432/sentinel"
     )
+    # Migrations connect as `sentinel_migrator` (owns the schema). Falls back to
+    # `database_url` when unset (e.g. a throwaway test database).
+    migration_database_url: SecretStr | None = SecretStr(
+        "postgresql+asyncpg://sentinel_migrator:sentinel-migrator-dev-only@localhost:5432/sentinel"
+    )
+    db_pool_size: int = Field(default=5, ge=1, le=50)
+    db_max_overflow: int = Field(default=5, ge=0, le=50)
+    db_statement_timeout_ms: int = Field(default=30_000, ge=100)
+    db_echo: bool = False
+
+    @property
+    def effective_migration_url(self) -> SecretStr:
+        return self.migration_database_url or self.database_url
 
     @property
     def is_prod(self) -> bool:

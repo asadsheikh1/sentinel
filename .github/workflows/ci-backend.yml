@@ -2,10 +2,15 @@ name: ci-backend
 
 on:
   pull_request:
-    paths: ["backend/**", "deploy/compose/**", ".github/workflows/ci-backend.yml"]
+    paths: &paths
+      - "backend/**"
+      - "deploy/compose/**"
+      - "scripts/db_roles.sql"
+      - "docs/database.md"
+      - ".github/workflows/ci-backend.yml"
   push:
     branches: [main]
-    paths: ["backend/**", "deploy/compose/**", ".github/workflows/ci-backend.yml"]
+    paths: *paths
 
 permissions:
   contents: read
@@ -37,9 +42,11 @@ jobs:
         run: uv run lint-imports
       - name: pytest (unit)
         run: uv run pytest --cov --cov-report=term
+      - name: docs/database.md is up to date
+        run: uv run sentinel db docs --check
 
   integration:
-    name: integration tests (rootless Podman)
+    name: db + integration tests (rootless Podman)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -53,10 +60,11 @@ jobs:
           podman --version
           systemctl --user start podman.socket
           echo "DOCKER_HOST=unix://${XDG_RUNTIME_DIR}/podman/podman.sock" >> "$GITHUB_ENV"
-      - name: pytest (integration, Testcontainers on Podman)
+      - name: pytest (all suites incl. db + integration, Testcontainers on Podman)
         env:
           TESTCONTAINERS_RYUK_DISABLED: "true"
-        run: uv run pytest -m integration -v
+        # -m "" selects every test; the coverage gate applies to the combined run.
+        run: uv run pytest -m "" -v --cov --cov-report=term
 
   image:
     name: multi-arch image build (Podman)

@@ -6,8 +6,11 @@ authors = [{ name = "Asad Sheikh" }]
 license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
     "fastapi>=0.163.1",
     "pydantic-settings>=2.16.3",
+    "sqlalchemy[asyncio]>=2.1.8",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -43,7 +46,8 @@ select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "ASYNC", "PT", "N", 
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]  # assert is fine in tests
+"tests/**" = ["S101", "S105", "S106"]  # assert and dummy passwords are fine in tests
+"src/sentinel/db/migrations/versions/**" = ["E501"]  # migrations read better unwrapped
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
@@ -60,17 +64,22 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "-m", "not integration"]
+addopts = ["-ra", "--strict-markers", "-m", "not integration and not db"]
 markers = [
   "integration: needs a container engine (Podman/Docker); run with `make test-integration`",
+  "db: needs a real Postgres (Testcontainers); run with `make test-db`",
 ]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+# One event loop for the whole session so the session-scoped Postgres fixtures
+# (container, engine) can be shared by every async test.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 filterwarnings = ["error"]
 
 [tool.coverage.run]
 source = ["sentinel"]
 branch = true
+omit = ["*/sentinel/db/migrations/*"]  # exercised by the db test suite, not unit tests
 
 [tool.coverage.report]
 show_missing = true
@@ -83,11 +92,12 @@ fail_under = 85
 root_package = "sentinel"
 
 [[tool.importlinter.contracts]]
-name = "Layering: cli -> api -> log -> config"
+name = "Layering: cli -> api -> db -> log -> config"
 type = "layers"
 layers = [
   "sentinel.cli",
   "sentinel.api",
+  "sentinel.db",
   "sentinel.log",
   "sentinel.config",
 ]
