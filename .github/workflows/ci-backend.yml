@@ -1,0 +1,81 @@
+name: ci-backend
+
+on:
+  pull_request:
+    paths: ["backend/**", "deploy/compose/**", ".github/workflows/ci-backend.yml"]
+  push:
+    branches: [main]
+    paths: ["backend/**", "deploy/compose/**", ".github/workflows/ci-backend.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  checks:
+    name: lint, types, unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.8"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: ruff
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy
+      - name: import-linter
+        run: uv run lint-imports
+      - name: pytest (unit)
+        run: uv run pytest --cov --cov-report=term
+
+  integration:
+    name: integration tests (rootless Podman)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.8"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Start rootless Podman API socket
+        run: |
+          podman --version
+          systemctl --user start podman.socket
+          echo "DOCKER_HOST=unix://${XDG_RUNTIME_DIR}/podman/podman.sock" >> "$GITHUB_ENV"
+      - name: pytest (integration, Testcontainers on Podman)
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+        run: uv run pytest -m integration -v
+
+  image:
+    name: multi-arch image build (Podman)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install QEMU for arm64 emulation
+        run: sudo apt-get update -q && sudo apt-get install -yq qemu-user-static
+      - name: Build amd64 + arm64 manifest
+        run: |
+          podman --version
+          podman build --platform linux/amd64,linux/arm64 \
+            --manifest localhost/sentinel-api:ci -f backend/Containerfile backend
+          podman manifest inspect localhost/sentinel-api:ci | grep '"architecture"'
+      - name: Smoke-test the image
+        run: |
+          podman run -d --name api -p 127.0.0.1:8000:8000 localhost/sentinel-api:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8000/healthz && exit 0; sleep 1; done
+          podman logs api; exit 1
