@@ -26,6 +26,7 @@ def test_defaults() -> None:
 
 def test_env_vars_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SENTINEL_ENV", "prod")
+    monkeypatch.setenv("SENTINEL_SECRET_KEY", "x" * 40)
     monkeypatch.setenv("SENTINEL_API_PORT", "9001")
     monkeypatch.setenv("SENTINEL_LOG_LEVEL", "DEBUG")
     s = Settings()

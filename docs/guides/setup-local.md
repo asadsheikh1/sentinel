@@ -32,7 +32,20 @@ make install
 make dev                        # then: curl localhost:8000/healthz
 ```
 
-## 4. Database
+## 4. First admin and logging in
+
+There are no default accounts. After `make up`:
+
+```bash
+make create-admin email=you@example.com name="Your Name"     # asks for a password (min 12 chars)
+curl -c /tmp/s.jar -X POST localhost:8000/api/v1/auth/login \
+     -H 'content-type: application/json' -d '{"email":"you@example.com","password":"..."}'
+curl -b /tmp/s.jar localhost:8000/api/v1/auth/me
+```
+
+For anything other than GET, also send the CSRF token: `-H "X-CSRF-Token: <value of the sentinel_csrf cookie>"`. Interactive API docs are at http://localhost:8000/api/v1/docs.
+
+## 5. Database
 
 `make up` starts Postgres (pgvector, PG 17) in Podman. On the **first** start of an empty data volume it:
 1. creates the roles `sentinel_migrator`, `sentinel_app` and `sentinel_readonly` (`scripts/db_roles.sql`);
@@ -51,7 +64,7 @@ make dev                        # then: curl localhost:8000/healthz
 
 `curl localhost:8000/readyz` returns 200 when the database is reachable and 503 when it isn't. `/healthz` doesn't touch the database.
 
-## 5. Podman notes
+## 6. Podman notes
 
 - **Compose:** `podman compose` hands off to podman-compose. The Makefile always calls it with `-f deploy/compose/compose.yaml`.
 - **Testcontainers:** `make test-integration` points `DOCKER_HOST` at the Podman machine's API socket and sets `TESTCONTAINERS_RYUK_DISABLED=true` (Ryuk's cleanup container isn't needed with Podman). To run pytest by hand:

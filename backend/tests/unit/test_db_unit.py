@@ -23,7 +23,14 @@ def test_readyz_returns_503_when_database_is_down() -> None:
 
 
 def test_all_tables_registered() -> None:
-    assert set(Base.metadata.tables) == {"users", "sessions", "api_keys", "audit_log", "jobs"}
+    assert set(Base.metadata.tables) == {
+        "users",
+        "sessions",
+        "api_keys",
+        "audit_log",
+        "jobs",
+        "user_invites",
+    }
 
 
 def test_migration_url_falls_back_to_database_url() -> None:

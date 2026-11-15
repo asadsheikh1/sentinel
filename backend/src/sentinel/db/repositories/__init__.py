@@ -1,3 +1,8 @@
-from sentinel.db.repositories.identity import ApiKeyRepository, SessionRepository, UserRepository
+from sentinel.db.repositories.identity import (
+    ApiKeyRepository,
+    InviteRepository,
+    SessionRepository,
+    UserRepository,
+)
 
-__all__ = ["ApiKeyRepository", "SessionRepository", "UserRepository"]
+__all__ = ["ApiKeyRepository", "InviteRepository", "SessionRepository", "UserRepository"]

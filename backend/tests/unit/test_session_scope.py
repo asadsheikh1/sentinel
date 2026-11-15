@@ -33,17 +33,29 @@ def _factory(session: FakeSession) -> Any:
 
 async def test_commits_on_success() -> None:
     fake = FakeSession()
-    async for s in session_scope(_factory(fake)):
+    async with session_scope(_factory(fake)) as s:
         assert s is fake
     assert fake.events == ["open", "commit", "close"]
 
 
 async def test_rolls_back_and_reraises_on_error() -> None:
     fake = FakeSession()
-    gen = session_scope(_factory(fake))
-    await anext(gen)
     with pytest.raises(RuntimeError, match="boom"):
-        await gen.athrow(RuntimeError("boom"))
+        async with session_scope(_factory(fake)):
+            raise RuntimeError("boom")
+    assert fake.events == ["open", "rollback", "close"]
+
+
+async def test_dependency_closes_session_when_request_fails() -> None:
+    """Regression: an error thrown into the FastAPI dependency must close the session."""
+    fake = FakeSession()
+    request: Any = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(session_factory=_factory(fake)))
+    )
+    gen = get_db_session(request)
+    await anext(gen)
+    with pytest.raises(RuntimeError, match="denied"):
+        await gen.athrow(RuntimeError("denied"))
     assert fake.events == ["open", "rollback", "close"]
 
 

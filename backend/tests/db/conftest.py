@@ -88,15 +88,15 @@ def pg() -> Iterator[Pg]:
 
 
 @pytest.fixture(scope="session")
-def settings() -> Settings:
+def base_settings() -> Settings:
     return Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 @pytest.fixture(scope="session")
-def migrated(pg: Pg, settings: Settings) -> Pg:
+def migrated(pg: Pg, base_settings: Settings) -> Pg:
     """The ``sentinel`` database with roles applied and migrations at head."""
     pg.apply_roles("sentinel")
-    migrate.upgrade(settings, "head", url=pg.url("sentinel_migrator"))
+    migrate.upgrade(base_settings, "head", url=pg.url("sentinel_migrator"))
     return pg
 
 

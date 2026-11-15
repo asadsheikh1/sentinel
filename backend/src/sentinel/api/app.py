@@ -5,11 +5,16 @@ from contextlib import asynccontextmanager
 from typing import Literal
 
 import structlog
-from fastapi import FastAPI, Response, status
+from fastapi import Depends, FastAPI, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from sentinel import __version__
+from sentinel.api import errors
+from sentinel.api.routers import api_keys, audit, auth, users
+from sentinel.api.schemas import MetaOut
+from sentinel.api.security import authenticated, public
+from sentinel.auth.ratelimit import RateLimiter
 from sentinel.config import Settings, get_settings
 from sentinel.db.engine import create_engine, create_session_factory, ping
 from sentinel.log import configure_logging
@@ -61,8 +66,12 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
         openapi_url=None if settings.is_prod else "/api/v1/openapi.json",
     )
     app.state.settings = settings
+    app.state.login_limiter = RateLimiter(settings.login_rate_limit_per_minute, 60)
+    errors.install(app)
 
-    @app.get("/healthz", response_model=HealthResponse, tags=["health"])
+    @app.get(
+        "/healthz", response_model=HealthResponse, tags=["health"], dependencies=[Depends(public())]
+    )
     async def healthz() -> HealthResponse:
         """Liveness: the process is up. Does not touch the database."""
         return HealthResponse(status="ok", version=__version__, env=settings.env.value)
@@ -72,6 +81,7 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
         response_model=ReadyResponse,
         tags=["health"],
         responses={503: {"model": ReadyResponse}},
+        dependencies=[Depends(public())],
     )
     async def readyz(response: Response) -> ReadyResponse:
         """Readiness: the database answers. Returns 503 when it doesn't."""
@@ -79,5 +89,17 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
             return ReadyResponse(status="ready", database="ok")
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return ReadyResponse(status="not_ready", database="unavailable")
+
+    @app.get(
+        "/api/v1/meta",
+        response_model=MetaOut,
+        tags=["meta"],
+        dependencies=[Depends(authenticated())],
+    )
+    async def meta() -> MetaOut:
+        return MetaOut(version=__version__, env=settings.env.value)
+
+    for module in (auth, users, api_keys, audit):
+        app.include_router(module.router)
 
     return app

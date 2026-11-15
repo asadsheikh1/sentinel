@@ -18,7 +18,15 @@ from .conftest import Pg
 
 pytestmark = pytest.mark.db
 
-EXPECTED_TABLES = {"users", "sessions", "api_keys", "audit_log", "jobs", "alembic_version"}
+EXPECTED_TABLES = {
+    "users",
+    "sessions",
+    "api_keys",
+    "audit_log",
+    "jobs",
+    "user_invites",
+    "alembic_version",
+}
 
 
 async def _tables(url: str) -> set[str]:
@@ -31,17 +39,17 @@ async def _tables(url: str) -> set[str]:
 
 
 async def test_upgrade_downgrade_upgrade_cycle(
-    pg: Pg, fresh_database: str, settings: Settings
+    pg: Pg, fresh_database: str, base_settings: Settings
 ) -> None:
     url = pg.url("sentinel_migrator", fresh_database)
     # Alembic's env.py calls asyncio.run(), so it must run outside our event loop.
-    await asyncio.to_thread(migrate.upgrade, settings, "head", url=url)
+    await asyncio.to_thread(migrate.upgrade, base_settings, "head", url=url)
     assert await _tables(url) == EXPECTED_TABLES
 
-    await asyncio.to_thread(migrate.downgrade, settings, "base", url=url)
+    await asyncio.to_thread(migrate.downgrade, base_settings, "base", url=url)
     assert await _tables(url) == {"alembic_version"}
 
-    await asyncio.to_thread(migrate.upgrade, settings, "head", url=url)
+    await asyncio.to_thread(migrate.upgrade, base_settings, "head", url=url)
     assert await _tables(url) == EXPECTED_TABLES
 
 

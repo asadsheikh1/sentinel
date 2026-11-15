@@ -10,7 +10,8 @@ PODMAN_SOCK = $(shell podman machine inspect --format '{{.ConnectionInfo.PodmanS
 INTEGRATION_ENV = DOCKER_HOST=unix://$(PODMAN_SOCK) TESTCONTAINERS_RYUK_DISABLED=true
 
 .PHONY: help install dev dev-frontend test test-integration test-db test-all lint format build \
-        up down logs ps clean migrate migration db-current db-docs db-shell db-reset
+        up down logs ps clean migrate migration db-current db-docs db-shell db-reset \
+        rbac-docs create-admin
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -26,8 +27,8 @@ dev: ## Run the API locally with auto-reload on http://localhost:8000
 dev-frontend: ## Run the web UI on http://localhost:5173 (proxies to the API)
 	$(FRONTEND) npm run dev
 
-test: ## Unit tests (backend + frontend)
-	$(BACKEND) uv run pytest --cov
+test: ## Unit tests (backend + frontend). Coverage gate is enforced by test-all / CI
+	$(BACKEND) uv run pytest --cov --cov-fail-under=0
 	$(FRONTEND) npm test
 
 test-integration: ## Tests that start real containers via Podman (Testcontainers)
@@ -51,8 +52,11 @@ build: ## Build the frontend bundle and the API image
 	$(FRONTEND) npm run build
 	podman build -t localhost/sentinel-api:dev -f backend/Containerfile backend
 
-up: ## Start Postgres + API in Podman containers
-	$(COMPOSE) up -d --build
+up: ## Build, apply migrations and start Postgres + API in Podman (data volume is kept)
+	$(COMPOSE) build
+	@# podman-compose only recreates a container when its *config* changes, not its image,
+	@# so force it: otherwise `migrate` and `api` keep running the previous build.
+	$(COMPOSE) up -d --force-recreate
 
 down: ## Stop the containers (data volume is kept)
 	$(COMPOSE) down
@@ -73,6 +77,13 @@ migration: ## Autogenerate a migration from model changes: make migration m="add
 db-current: ## Show the applied migration revision
 	$(BACKEND) uv run sentinel db current
 
+rbac-docs: ## Regenerate docs/rbac.md (roles, scopes, every route's access rule)
+	$(BACKEND) uv run sentinel rbac-docs
+
+create-admin: ## Create the first admin: make create-admin email=you@example.com name="Your Name"
+	@test -n "$(email)" -a -n "$(name)" || (echo 'usage: make create-admin email=... name="..."'; exit 1)
+	$(BACKEND) uv run sentinel create-admin --email "$(email)" --name "$(name)"
+
 db-docs: ## Regenerate docs/database.md from the models
 	$(BACKEND) uv run sentinel db docs
 
@@ -81,7 +92,7 @@ db-shell: ## Open psql inside the Postgres container (as superuser)
 
 db-reset: ## DELETES all local data: remove containers + volume, start fresh (roles + migrations)
 	$(COMPOSE) down -v
-	$(COMPOSE) up -d --build
+	$(MAKE) up
 
 clean: ## Remove local caches and build output (not containers or volumes)
 	rm -rf backend/.pytest_cache backend/.mypy_cache backend/.ruff_cache backend/.coverage frontend/dist

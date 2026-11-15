@@ -48,10 +48,12 @@ async def test_email_unique_case_insensitive(db_session: AsyncSession) -> None:
 
 async def test_user_list_count_role_and_active(db_session: AsyncSession) -> None:
     repo = UserRepository(db_session)
+    before = await repo.count()  # other tests may have committed users
     u1 = await _user(db_session, "u1@example.com")
     await _user(db_session, "u2@example.com")
-    assert await repo.count() == 2
-    assert [u.email for u in await repo.list()] == ["u1@example.com", "u2@example.com"]
+    assert await repo.count() == before + 2
+    mine = [u.email for u in await repo.list(limit=10_000) if u.email.startswith("u")]
+    assert mine[-2:] == ["u1@example.com", "u2@example.com"]
 
     await repo.set_role(u1.id, UserRole.APPROVER)
     await repo.set_active(u1.id, active=False)

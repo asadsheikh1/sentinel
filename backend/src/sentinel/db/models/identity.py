@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, INET
@@ -36,7 +37,8 @@ class User(UUIDPrimaryKey, Timestamps, Base):
 
     email: Mapped[str] = mapped_column(CITEXT, unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
-    password_hash: Mapped[str] = mapped_column(Text, nullable=False)  # Argon2id (Step 3)
+    # Argon2id. NULL until an invited user sets a password (cannot log in meanwhile).
+    password_hash: Mapped[str | None] = mapped_column(Text)
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role", values_callable=enum_values),
         nullable=False,
@@ -65,9 +67,33 @@ class Session(UUIDPrimaryKey, CreatedAt, Base):
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Idle timeout is measured from here (updated at most once a minute).
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ip: Mapped[IPv4Address | IPv6Address | None] = mapped_column(INET)
     user_agent: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("char_length(token_hash) = 64", name="token_hash_sha256_hex"),
+    )
+
+
+class UserInvite(UUIDPrimaryKey, CreatedAt, Base):
+    """One-time link that lets a new user set their own password (no public sign-up)."""
+
+    __tablename__ = "user_invites"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     __table_args__ = (
         CheckConstraint("char_length(token_hash) = 64", name="token_hash_sha256_hex"),

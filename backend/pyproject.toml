@@ -7,9 +7,11 @@ license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
+    "argon2-cffi>=25.1.0",
     "asyncpg>=0.32.0",
     "fastapi>=0.163.1",
     "pydantic-settings>=2.16.3",
+    "pydantic[email]>=2.14.3",
     "sqlalchemy[asyncio]>=2.1.8",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.54.0",
@@ -47,7 +49,7 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]  # assert and dummy passwords are fine in tests
-"src/sentinel/db/migrations/versions/**" = ["E501"]  # migrations read better unwrapped
+"src/sentinel/db/migrations/versions/**" = ["E501", "S608"]  # unwrapped; SQL from constants only
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
@@ -80,6 +82,8 @@ filterwarnings = ["error"]
 source = ["sentinel"]
 branch = true
 omit = ["*/sentinel/db/migrations/*"]  # exercised by the db test suite, not unit tests
+# SQLAlchemy async runs DB code on greenlets; without this, lines after an await go untraced.
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
 show_missing = true
@@ -92,11 +96,13 @@ fail_under = 85
 root_package = "sentinel"
 
 [[tool.importlinter.contracts]]
-name = "Layering: cli -> api -> db -> log -> config"
+name = "Layering: cli -> api -> auth -> security -> db -> log -> config"
 type = "layers"
 layers = [
   "sentinel.cli",
   "sentinel.api",
+  "sentinel.auth",
+  "sentinel.security",
   "sentinel.db",
   "sentinel.log",
   "sentinel.config",
