@@ -27,6 +27,16 @@ Security is a product requirement. SENTINEL reads attacker-influenceable data (l
 
 - **Users:** local accounts, Argon2id (`argon2-cffi`), minimum length 12. Sessions are server-side (`sessions` table) with an opaque random token (256-bit), stored hashed. Idle timeout 12 h, absolute timeout 7 days.
 - **Initial admin:** created by a CLI command (`sentinel create-admin`). There is no default credential.
+- **New users:** an admin creates the account and gets a one-time invite token, valid for 72 h and stored hashed. The user sets their own password with it. Issuing a new invite invalidates older ones, which doubles as a password reset. There is no public sign-up.
+- **Login protection:**
+  - Rate limit of 5 attempts per minute per IP and per email (in memory; single API process in v1).
+  - Account lockout for 15 min after 5 failures.
+  - The same `401 Invalid email or password` for unknown, wrong, inactive, locked and invite-pending accounts.
+  - Argon2 verification runs even for unknown emails, so timing doesn't reveal which accounts exist.
+- **CSRF:** a signed double-submit token, `HMAC(secret_key, session_token_hash)`. It is sent in a readable `sentinel_csrf` cookie and must be echoed in `X-CSRF-Token` on every non-GET request. A token from another session doesn't verify.
+- **Token storage:** session tokens, invite tokens and API keys are stored only as `HMAC-SHA256(secret_key, purpose:token)`. A database dump alone can't be used to log in.
+- **Immediate effect:** changing a user's role or deactivating them revokes all their sessions. The last active admin can't be demoted or deactivated.
+- **Route guard:** every route declares exactly one access rule (`public`, `authenticated`, `require(permission)` or `require_scope(scope)`). A test fails if any route lacks one. The generated table is in [rbac.md](../rbac.md).
 - **RBAC:**
 
 | Permission | viewer | responder | approver | admin |

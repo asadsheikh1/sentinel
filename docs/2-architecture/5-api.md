@@ -29,7 +29,11 @@
 | GET | `/api/v1/auth/me` | session | Current user and permissions |
 | GET/POST | `/api/v1/users` | `users:manage` | List or create users |
 | PATCH | `/api/v1/users/{id}` | `users:manage` | Change role or deactivate |
+| POST | `/api/v1/users/{id}/invite` | `users:manage` | Issue a new one-time invite (also used for password reset) |
+| POST | `/api/v1/auth/accept-invite` | public (rate-limited) | Invite token + new password |
 | GET/POST/DELETE | `/api/v1/api-keys[/{id}]` | `apikeys:manage` | Manage machine keys. The secret is shown once |
+
+The generated per-route access table is in [rbac.md](../rbac.md).
 
 ### Ingestion (machine)
 | Method | Path | Scope | Purpose |

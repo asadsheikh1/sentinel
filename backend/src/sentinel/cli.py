@@ -49,6 +49,62 @@ def _run_db(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_password(from_stdin: bool) -> str:
+    import getpass
+    import sys
+
+    if from_stdin:
+        return sys.stdin.readline().rstrip("\n")
+    first = getpass.getpass("Password (min 12 chars): ")
+    if getpass.getpass("Repeat password: ") != first:
+        raise SystemExit("Passwords do not match.")
+    return first
+
+
+def _run_create_admin(args: argparse.Namespace) -> int:
+    import asyncio
+
+    from sentinel.auth.passwords import PasswordPolicyError
+    from sentinel.auth.service import Actor, AuthService, ConflictError
+    from sentinel.config import get_settings
+    from sentinel.db.engine import create_engine, create_session_factory, session_scope
+    from sentinel.db.models import UserRole
+
+    settings = get_settings()
+    password = _read_password(args.password_stdin)
+
+    async def run() -> None:
+        engine = create_engine(settings)
+        try:
+            async with session_scope(create_session_factory(engine)) as db:
+                user, _ = await AuthService(db, settings).create_user(
+                    email=args.email,
+                    display_name=args.name,
+                    role=UserRole.ADMIN,
+                    password=password,
+                    actor=Actor.system("cli:create-admin"),
+                )
+                print(f"Created admin {user.email} ({user.id}).")
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.run(run())
+    except (ConflictError, PasswordPolicyError) as e:
+        print(f"Error: {e}")
+        return 1
+    return 0
+
+
+def _run_rbac_docs(args: argparse.Namespace) -> int:
+    from sentinel.api.app import create_app
+    from sentinel.api.rbac_docs import write_or_check
+    from sentinel.config import Settings
+
+    app = create_app(Settings(_env_file=None))
+    return write_or_check(app, args.output, check=args.check)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sentinel", description="SENTINEL AI SRE")
     parser.add_argument("--version", action="version", version=f"sentinel {__version__}")
@@ -73,6 +129,19 @@ def build_parser() -> argparse.ArgumentParser:
     docs.add_argument("--output", default="../docs/database.md")
     docs.add_argument("--check", action="store_true", help="fail if the file is out of date")
     db.set_defaults(func=_run_db)
+
+    admin = sub.add_parser("create-admin", help="create an admin user (the only way to bootstrap)")
+    admin.add_argument("--email", required=True)
+    admin.add_argument("--name", required=True, help="display name")
+    admin.add_argument(
+        "--password-stdin", action="store_true", help="read the password from stdin (scripts)"
+    )
+    admin.set_defaults(func=_run_create_admin)
+
+    rbac = sub.add_parser("rbac-docs", help="generate docs/rbac.md from the code")
+    rbac.add_argument("--output", default="../docs/rbac.md")
+    rbac.add_argument("--check", action="store_true", help="fail if the file is out of date")
+    rbac.set_defaults(func=_run_rbac_docs)
     return parser
 
 

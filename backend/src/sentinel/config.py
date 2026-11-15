@@ -9,7 +9,7 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,9 @@ class Environment(StrEnum):
 
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
+
+# Insecure placeholder so dev/test work out of the box; rejected in prod.
+_DEV_SECRET_KEY = "dev-only-insecure-secret-key-change-me-0000"  # noqa: S105
 
 
 class Settings(BaseSettings):
@@ -51,6 +54,29 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=5, ge=0, le=50)
     db_statement_timeout_ms: int = Field(default=30_000, ge=100)
     db_echo: bool = False
+
+    # Security. `secret_key` is the server-side pepper for session tokens, API
+    # keys, invite tokens and CSRF tokens. It MUST be set (>= 32 chars) in prod.
+    secret_key: SecretStr = SecretStr(_DEV_SECRET_KEY)
+    # False only for plain-http local dev (Safari drops Secure cookies on http://localhost).
+    cookie_secure: bool = True
+    session_idle_timeout_minutes: int = Field(default=12 * 60, ge=5)
+    session_absolute_timeout_days: int = Field(default=7, ge=1, le=30)
+    login_rate_limit_per_minute: int = Field(default=5, ge=1)
+    lockout_threshold: int = Field(default=5, ge=1)
+    lockout_minutes: int = Field(default=15, ge=1)
+    invite_ttl_hours: int = Field(default=72, ge=1)
+    password_min_length: int = Field(default=12, ge=8)
+
+    @model_validator(mode="after")
+    def _prod_requires_real_secret(self) -> "Settings":
+        if self.env is Environment.PROD:
+            key = self.secret_key.get_secret_value()
+            if key == _DEV_SECRET_KEY or len(key) < 32:
+                raise ValueError("SENTINEL_SECRET_KEY must be set to >= 32 random chars in prod")
+            if not self.cookie_secure:
+                raise ValueError("SENTINEL_COOKIE_SECURE must be true in prod")
+        return self
 
     @property
     def effective_migration_url(self) -> SecretStr:

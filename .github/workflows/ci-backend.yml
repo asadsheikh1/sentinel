@@ -40,10 +40,12 @@ jobs:
         run: uv run mypy
       - name: import-linter
         run: uv run lint-imports
-      - name: pytest (unit)
-        run: uv run pytest --cov --cov-report=term
+      - name: pytest (unit; coverage reported, gate enforced on the full run below)
+        run: uv run pytest --cov --cov-report=term --cov-fail-under=0
       - name: docs/database.md is up to date
         run: uv run sentinel db docs --check
+      - name: docs/rbac.md matches the code
+        run: uv run sentinel rbac-docs --check
 
   integration:
     name: db + integration tests (rootless Podman)

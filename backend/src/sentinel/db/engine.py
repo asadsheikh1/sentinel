@@ -1,6 +1,7 @@
 """Async engine and session management."""
 
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -40,8 +41,14 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
     return async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
 
 
+@asynccontextmanager
 async def session_scope(factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncSession]:
-    """Yield a session; commit on success, roll back on error, always close."""
+    """Commit on success, roll back on error, always close.
+
+    A context manager (not a bare async generator) on purpose: an exception
+    inside ``async for`` over a generator leaves the generator suspended, so the
+    session would never be rolled back or closed and its connection would leak.
+    """
     async with factory() as session:
         try:
             yield session

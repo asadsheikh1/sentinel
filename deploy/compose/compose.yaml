@@ -52,6 +52,10 @@ services:
       SENTINEL_LOG_LEVEL: INFO
       # The API connects as sentinel_app (no DDL, cannot alter the audit log).
       SENTINEL_DATABASE_URL: postgresql+asyncpg://sentinel_app:${SENTINEL_DB_APP_PASSWORD:-sentinel-app-dev-only}@postgres:5432/${POSTGRES_DB:-sentinel}
+      # Pepper for session/API-key/invite hashes. Dev default only; prod refuses it.
+      SENTINEL_SECRET_KEY: ${SENTINEL_SECRET_KEY:-dev-only-insecure-secret-key-change-me-0000}
+      # Local dev is plain http://localhost (no TLS until Caddy). Prod forces true.
+      SENTINEL_COOKIE_SECURE: ${SENTINEL_COOKIE_SECURE:-false}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

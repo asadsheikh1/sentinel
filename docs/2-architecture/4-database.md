@@ -55,8 +55,9 @@ erDiagram
 ### Identity and access
 | Table | Key columns |
 |---|---|
-| `users` | id, email (unique, citext), display_name, password_hash (Argon2id), role enum(`viewer`,`responder`,`approver`,`admin`), is_active, last_login_at, failed_login_count, locked_until |
-| `sessions` | id, user_id, token_hash, created_at, expires_at, revoked_at, ip, user_agent |
+| `users` | id, email (unique, citext), display_name, password_hash (Argon2id; NULL until an invite is accepted), role enum(`viewer`,`responder`,`approver`,`admin`), is_active, last_login_at, failed_login_count, locked_until |
+| `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at (idle timeout), revoked_at, ip, user_agent |
+| `user_invites` | id, user_id, token_hash, expires_at, used_at, created_by. One-time password-setup links (no public sign-up) |
 | `api_keys` | id, name, prefix (first 8 chars, for display), key_hash (SHA-256 with server pepper), scopes text[] (`alerts:write`, `deployments:write`, `github:webhook`), created_by, last_used_at, revoked_at |
 | `audit_log` | id bigserial, ts, actor_type enum(user, api_key, system, llm), actor_id, action text, target_type, target_id, details jsonb (redacted), ip, prev_hash, hash (SHA-256 chain) |
 | `credentials` | id, kind (`github_read`, `github_write`), encrypted_value (AES-GCM, key from env or secret store), created_by, rotated_at. **Never selected by LLM-facing code paths** |

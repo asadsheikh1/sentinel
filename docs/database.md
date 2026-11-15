@@ -71,6 +71,7 @@
 | `user_id` | UUID | no |  | → `users.id` ON DELETE CASCADE |
 | `token_hash` | VARCHAR(64) | no |  | unique |
 | `expires_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `last_seen_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 | `revoked_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
 | `ip` | INET | yes |  |  |
 | `user_agent` | TEXT | yes |  |  |
@@ -81,13 +82,29 @@
 
 **Indexes:** `ix_sessions_user_id` (sessions.user_id)
 
+## `user_invites`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `user_id` | UUID | no |  | → `users.id` ON DELETE CASCADE |
+| `token_hash` | VARCHAR(64) | no |  | unique |
+| `expires_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `used_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `created_by` | UUID | yes |  | → `users.id` ON DELETE SET NULL |
+| `id` | UUID | no | app: `uuid7()` | PK |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Checks:** `char_length(token_hash) = 64`
+
+**Indexes:** `ix_user_invites_user_id` (user_invites.user_id)
+
 ## `users`
 
 | Column | Type | Null | Default | Key / reference |
 |---|---|---|---|---|
 | `email` | CITEXT | no |  | unique |
 | `display_name` | TEXT | no |  |  |
-| `password_hash` | TEXT | no |  |  |
+| `password_hash` | TEXT | yes |  |  |
 | `role` | user_role | no | `viewer` |  |
 | `is_active` | BOOLEAN | no | `true` |  |
 | `last_login_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |

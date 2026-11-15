@@ -2,17 +2,17 @@
 
 Repositories take an ``AsyncSession`` and never commit: the caller owns the
 transaction (see ``sentinel.db.engine.session_scope``). Business rules such as
-password hashing and lockout live in the auth service (Step 3), not here.
+password hashing and lockout live in ``sentinel.auth.service``, not here.
 """
 
 import uuid
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sentinel.db.models import ApiKey, Session, User, UserRole
+from sentinel.db.models import ApiKey, Session, User, UserInvite, UserRole
 
 
 class UserRepository:
@@ -24,7 +24,7 @@ class UserRepository:
         *,
         email: str,
         display_name: str,
-        password_hash: str,
+        password_hash: str | None,
         role: UserRole = UserRole.VIEWER,
     ) -> User:
         user = User(email=email, display_name=display_name, password_hash=password_hash, role=role)
@@ -53,6 +53,34 @@ class UserRepository:
 
     async def set_active(self, user_id: uuid.UUID, *, active: bool) -> None:
         await self._s.execute(update(User).where(User.id == user_id).values(is_active=active))
+
+    async def count_active_admins(self) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(User)
+            .where(User.role == UserRole.ADMIN, User.is_active.is_(True))
+        )
+        return int(await self._s.scalar(stmt) or 0)
+
+    async def record_login_failure(
+        self, user: User, *, now: datetime, threshold: int, lockout: timedelta
+    ) -> None:
+        """Count a failed login; lock the account once ``threshold`` is reached."""
+        user.failed_login_count += 1
+        if user.failed_login_count >= threshold:
+            user.locked_until = now + lockout
+            user.failed_login_count = 0
+        await self._s.flush()
+
+    async def record_login_success(self, user: User, *, now: datetime) -> None:
+        user.failed_login_count = 0
+        user.locked_until = None
+        user.last_login_at = now
+        await self._s.flush()
+
+    async def set_password_hash(self, user: User, password_hash: str) -> None:
+        user.password_hash = password_hash
+        await self._s.flush()
 
 
 class SessionRepository:
@@ -86,6 +114,11 @@ class SessionRepository:
                 Session.revoked_at.is_(None),
                 Session.expires_at > now,
             )
+        )
+
+    async def touch(self, session_id: uuid.UUID, *, now: datetime) -> None:
+        await self._s.execute(
+            update(Session).where(Session.id == session_id).values(last_seen_at=now)
         )
 
     async def revoke(self, session_id: uuid.UUID, *, now: datetime) -> None:
@@ -140,4 +173,43 @@ class ApiKeyRepository:
             update(ApiKey)
             .where(ApiKey.id == key_id, ApiKey.revoked_at.is_(None))
             .values(revoked_at=now)
+        )
+
+
+class InviteRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(
+        self,
+        *,
+        user_id: uuid.UUID,
+        token_hash: str,
+        expires_at: datetime,
+        created_by: uuid.UUID | None,
+    ) -> UserInvite:
+        invite = UserInvite(
+            user_id=user_id, token_hash=token_hash, expires_at=expires_at, created_by=created_by
+        )
+        self._s.add(invite)
+        await self._s.flush()
+        return invite
+
+    async def get_usable(self, token_hash: str, *, now: datetime) -> UserInvite | None:
+        return await self._s.scalar(
+            select(UserInvite)
+            .where(
+                UserInvite.token_hash == token_hash,
+                UserInvite.used_at.is_(None),
+                UserInvite.expires_at > now,
+            )
+            .with_for_update()
+        )
+
+    async def invalidate_for_user(self, user_id: uuid.UUID, *, now: datetime) -> None:
+        """Mark every open invite for a user as used (e.g. when a new one is issued)."""
+        await self._s.execute(
+            update(UserInvite)
+            .where(UserInvite.user_id == user_id, UserInvite.used_at.is_(None))
+            .values(used_at=now)
         )

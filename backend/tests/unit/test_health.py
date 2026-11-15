@@ -18,6 +18,6 @@ def test_openapi_docs_enabled_outside_prod() -> None:
 
 
 def test_openapi_docs_disabled_in_prod() -> None:
-    client = TestClient(create_app(Settings(env=Environment.PROD)))
+    client = TestClient(create_app(Settings(env=Environment.PROD, secret_key="x" * 40)))
     assert client.get("/api/v1/openapi.json").status_code == 404
     assert client.get("/api/v1/docs").status_code == 404
