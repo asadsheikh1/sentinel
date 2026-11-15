@@ -1,7 +1,7 @@
 # Step 2 report — Database foundation and migrations
 
-**Status:** done locally. CI: CI_RESULT
-**Branch / PR:** `step-02-database` → PR_LINK (not merged; merging is your decision)
+**Status:** ✅ done. All acceptance criteria met locally and in CI.
+**Branch / PR:** `step-02-database` → [PR #2](https://github.com/asadsheikh1/sentinel/pull/2) (not merged; merging is your decision)
 **Date:** 2026-11-16
 
 ## What was built
@@ -26,7 +26,7 @@
 | Criterion | Result |
 |---|---|
 | `make migrate` works on a fresh DB | ✅ `make db-reset` → roles created → `migrate` container exited 0 → `make migrate` from the Mac is a no-op → `make db-current` = `0001 (head)` |
-| DB tests pass | ✅ locally: 26 passed (`make test-db`). CI: CI_RESULT |
+| DB tests pass | ✅ locally: 26 passed (`make test-db`). CI: ✅ "db + integration tests (rootless Podman)" passed (38 s) |
 | upgrade → downgrade → upgrade | ✅ `test_upgrade_downgrade_upgrade_cycle` on a fresh database |
 | CRUD | ✅ 10 repository tests (users, sessions, API keys, cascades) |
 | `audit_log` UPDATE/DELETE denied for the app role | ✅ tested, and also checked by hand with `psql`: `ERROR: permission denied for table audit_log` |
@@ -61,6 +61,10 @@ I removed the `REVOKE … ON audit_log FROM sentinel_app` line from the migratio
 2. **`sentinel_readonly` can't read the `sessions` and `api_keys` hash tables.**
 3. **A one-shot `migrate` service in compose**, so `make up` gives a ready database with no manual step.
 4. **`/readyz`.** My Step 1 code already pointed to it, as coming in Step 2.
+
+## CI (PR #2)
+
+✅ 4/4 checks pass: lint/types/unit (28 s), db + integration on rootless Podman (38 s), multi-arch image build (3 min 44 s), gitleaks (5 s). The frontend workflow didn't run because no frontend files changed.
 
 ## Problems found
 
