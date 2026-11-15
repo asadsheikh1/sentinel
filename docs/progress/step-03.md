@@ -1,7 +1,7 @@
 # Step 3 report — Authentication, RBAC, API keys, audit log
 
-**Status:** done locally. CI: CI_RESULT
-**Branch / PR:** `step-03-auth` → PR_LINK (not merged; merging is your decision)
+**Status:** ✅ done. All acceptance criteria met locally and in CI (4/4 checks pass: unit 25 s, db + integration on rootless Podman 54 s, multi-arch build 5 min 49 s, gitleaks 6 s).
+**Branch / PR:** `step-03-auth` → [PR #3](https://github.com/asadsheikh1/sentinel/pull/3) (not merged; merging is your decision)
 **Date:** 2026-11-16
 
 ## What was built
