@@ -32,7 +32,26 @@ make install
 make dev                        # then: curl localhost:8000/healthz
 ```
 
-## 4. Podman notes
+## 4. Database
+
+`make up` starts Postgres (pgvector, PG 17) in Podman. On the **first** start of an empty data volume it:
+1. creates the roles `sentinel_migrator`, `sentinel_app` and `sentinel_readonly` (`scripts/db_roles.sql`);
+2. runs the one-shot `migrate` container (`sentinel db upgrade`) as `sentinel_migrator`;
+3. starts the API as `sentinel_app`.
+
+| Command | What it does |
+|---|---|
+| `make migrate` | Apply migrations from your Mac (needs `make up`) |
+| `make db-current` | Show the applied revision |
+| `make migration m="add foo"` | Autogenerate a migration from model changes (always review it) |
+| `make db-docs` | Regenerate `docs/database.md` |
+| `make db-shell` | psql inside the container |
+| `make test-db` | Database tests on a throwaway Postgres (Testcontainers) |
+| `make db-reset` | **Deletes all local data**, then starts fresh |
+
+`curl localhost:8000/readyz` returns 200 when the database is reachable and 503 when it isn't. `/healthz` doesn't touch the database.
+
+## 5. Podman notes
 
 - **Compose:** `podman compose` hands off to podman-compose. The Makefile always calls it with `-f deploy/compose/compose.yaml`.
 - **Testcontainers:** `make test-integration` points `DOCKER_HOST` at the Podman machine's API socket and sets `TESTCONTAINERS_RYUK_DISABLED=true` (Ryuk's cleanup container isn't needed with Podman). To run pytest by hand:

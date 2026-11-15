@@ -9,10 +9,16 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-sentinel}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinel-dev-only}
       POSTGRES_DB: ${POSTGRES_DB:-sentinel}
+      SENTINEL_DB_MIGRATOR_PASSWORD: ${SENTINEL_DB_MIGRATOR_PASSWORD:-sentinel-migrator-dev-only}
+      SENTINEL_DB_APP_PASSWORD: ${SENTINEL_DB_APP_PASSWORD:-sentinel-app-dev-only}
+      SENTINEL_DB_READONLY_PASSWORD: ${SENTINEL_DB_READONLY_PASSWORD:-sentinel-readonly-dev-only}
     ports:
       - "127.0.0.1:5432:5432" # localhost only; never exposed publicly
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Role setup runs only on first init of the volume (use `make db-reset` to redo).
+      - ./initdb:/docker-entrypoint-initdb.d:ro,Z
+      - ../../scripts/db_roles.sql:/sentinel/db_roles.sql:ro,Z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
@@ -20,20 +26,37 @@ services:
       retries: 20
     restart: unless-stopped
 
-  api:
+  # One-shot: applies Alembic migrations as sentinel_migrator, then exits.
+  migrate:
     build:
       context: ../../backend
       dockerfile: Containerfile
     image: localhost/sentinel-api:dev
+    command: ["sentinel", "db", "upgrade"]
     environment:
       SENTINEL_ENV: dev
-      SENTINEL_LOG_LEVEL: INFO
-      SENTINEL_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sentinel}:${POSTGRES_PASSWORD:-sentinel-dev-only}@postgres:5432/${POSTGRES_DB:-sentinel}
-    ports:
-      - "127.0.0.1:8000:8000"
+      SENTINEL_DATABASE_URL: postgresql+asyncpg://sentinel_app:${SENTINEL_DB_APP_PASSWORD:-sentinel-app-dev-only}@postgres:5432/${POSTGRES_DB:-sentinel}
+      SENTINEL_MIGRATION_DATABASE_URL: postgresql+asyncpg://sentinel_migrator:${SENTINEL_DB_MIGRATOR_PASSWORD:-sentinel-migrator-dev-only}@postgres:5432/${POSTGRES_DB:-sentinel}
     depends_on:
       postgres:
         condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+
+  api:
+    image: localhost/sentinel-api:dev
+    environment:
+      SENTINEL_ENV: dev
+      SENTINEL_LOG_LEVEL: INFO
+      # The API connects as sentinel_app (no DDL, cannot alter the audit log).
+      SENTINEL_DATABASE_URL: postgresql+asyncpg://sentinel_app:${SENTINEL_DB_APP_PASSWORD:-sentinel-app-dev-only}@postgres:5432/${POSTGRES_DB:-sentinel}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
