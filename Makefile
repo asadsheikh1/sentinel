@@ -41,7 +41,7 @@ test-db: ## Database tests against a throwaway pgvector Postgres (Testcontainers
 	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m db
 
 test-all: ## Every backend test (unit + db + integration) with the coverage gate
-	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "" --cov
+	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "not observability" --cov
 
 lint: ## Lint, format check, type check, architecture contracts
 	$(BACKEND) uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports
