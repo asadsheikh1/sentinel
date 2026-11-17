@@ -1,0 +1,44 @@
+# promtool unit tests for rules/red.yml:
+#   promtool test rules deploy/prometheus/tests/red_test.yml
+rule_files:
+  - ../rules/red.yml
+
+evaluation_interval: 30s
+
+tests:
+  - interval: 30s
+    input_series:
+      # orders: 10 req/s, of which 1 req/s is a 500
+      - series: 'http_server_request_duration_seconds_count{job="aviro/orders", service_name="orders", http_route="/orders", http_request_method="POST", http_response_status_code="201"}'
+        values: "0+270x20"
+      - series: 'http_server_request_duration_seconds_count{job="aviro/orders", service_name="orders", http_route="/orders", http_request_method="POST", http_response_status_code="500"}'
+        values: "0+30x20"
+      # latency histogram: 90% under 0.1 s, the rest under 1 s
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/orders", service_name="orders", le="0.1"}'
+        values: "0+270x20"
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/orders", service_name="orders", le="1"}'
+        values: "0+300x20"
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/orders", service_name="orders", le="+Inf"}'
+        values: "0+300x20"
+    promql_expr_test:
+      - expr: service:http_requests:rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'service:http_requests:rate5m{job="aviro/orders", service_name="orders"}'
+            value: 10
+      - expr: service:http_errors:rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'service:http_errors:rate5m{job="aviro/orders", service_name="orders"}'
+            value: 1
+      - expr: service:http_error_ratio:rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'service:http_error_ratio:rate5m{job="aviro/orders", service_name="orders"}'
+            value: 0.1
+      - expr: service:http_latency_p95_seconds:5m
+        eval_time: 10m
+        exp_samples:
+          # p95 falls in the (0.1, 1] bucket: 0.1 + (0.95*300-270)/(300-270) * 0.9 = 0.55
+          - labels: 'service:http_latency_p95_seconds:5m{job="aviro/orders", service_name="orders"}'
+            value: 0.55
