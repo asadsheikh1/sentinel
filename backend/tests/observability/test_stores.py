@@ -8,7 +8,7 @@ import os
 import secrets
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import httpx2 as httpx
@@ -75,8 +75,9 @@ def eventually(fetch: Callable[[], Any], timeout: float = 60, every: float = 2) 
 
 
 @pytest.fixture(scope="module")
-def http() -> httpx.Client:
-    return httpx.Client(timeout=15)
+def http() -> Iterator[httpx.Client]:
+    with httpx.Client(timeout=15) as client:  # closed, or its sockets leak (warnings are errors)
+        yield client
 
 
 @pytest.fixture
@@ -134,7 +135,16 @@ def test_prometheus_loaded_red_rules(http: httpx.Client) -> None:
         "service:http_error_ratio:rate5m",
         "service:http_latency_p95_seconds:5m",
     } <= names
-    assert all(rule["health"] == "ok" for g in groups for rule in g["rules"])
+
+    def evaluated() -> list[dict[str, Any]]:
+        # Health is "unknown" until each rule's first evaluation (every 30 s).
+        rules = [
+            r for g in http.get(f"{PROM}/api/v1/rules").json()["data"]["groups"] for r in g["rules"]
+        ]
+        return rules if all(r["health"] != "unknown" for r in rules) else []
+
+    rules = eventually(evaluated, timeout=90)
+    assert [r["name"] for r in rules if r["health"] != "ok"] == []
 
 
 def test_loki_accepts_otlp_logs_and_answers_queries(http: httpx.Client, run_id: str) -> None:

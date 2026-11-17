@@ -13,8 +13,8 @@ tests:
         values: "0+270x20"
       - series: 'http_server_request_duration_seconds_count{job="aviro/orders", service_name="orders", http_route="/orders", http_request_method="POST", http_response_status_code="500"}'
         values: "0+30x20"
-      # latency histogram: 90% under 0.1 s, the rest under 1 s
-      - series: 'http_server_request_duration_seconds_bucket{job="aviro/orders", service_name="orders", le="0.1"}'
+      # latency histogram: 90% under 0.5 s, the rest under 1 s
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/orders", service_name="orders", le="0.5"}'
         values: "0+270x20"
       - series: 'http_server_request_duration_seconds_bucket{job="aviro/orders", service_name="orders", le="1"}'
         values: "0+300x20"
@@ -36,9 +36,10 @@ tests:
         exp_samples:
           - labels: 'service:http_error_ratio:rate5m{job="aviro/orders", service_name="orders"}'
             value: 0.1
-      - expr: service:http_latency_p95_seconds:5m
+      # p95 falls in the (0.5, 1] bucket: 0.5 + (0.95*300-270)/(300-270) * 0.5 = 0.75 s.
+      # Compared in whole milliseconds: rate() division leaves floating-point noise.
+      - expr: round(service:http_latency_p95_seconds:5m * 1000)
         eval_time: 10m
         exp_samples:
-          # p95 falls in the (0.1, 1] bucket: 0.1 + (0.95*300-270)/(300-270) * 0.9 = 0.55
-          - labels: 'service:http_latency_p95_seconds:5m{job="aviro/orders", service_name="orders"}'
-            value: 0.55
+          - labels: '{job="aviro/orders", service_name="orders"}'
+            value: 750
