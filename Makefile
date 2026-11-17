@@ -3,6 +3,9 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 COMPOSE   := podman compose -f deploy/compose/compose.yaml
+# Core + telemetry stores (Prometheus, Alertmanager, Loki, Jaeger).
+COMPOSE_OBS := podman compose -f deploy/compose/compose.yaml -f deploy/compose/compose.observability.yaml
+PROM_IMAGE := $(shell grep -o 'docker.io/prom/prometheus:[^ ]*' deploy/compose/compose.observability.yaml)
 BACKEND   := cd backend &&
 FRONTEND  := cd frontend &&
 # Testcontainers talks to Podman through its Docker-compatible API socket.
@@ -11,7 +14,7 @@ INTEGRATION_ENV = DOCKER_HOST=unix://$(PODMAN_SOCK) TESTCONTAINERS_RYUK_DISABLED
 
 .PHONY: help install dev dev-frontend test test-integration test-db test-all lint format build \
         up down logs ps clean migrate migration db-current db-docs db-shell db-reset \
-        rbac-docs create-admin
+        rbac-docs create-admin obs-up obs-down obs-ps obs-stats test-obs test-rules
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -38,7 +41,7 @@ test-db: ## Database tests against a throwaway pgvector Postgres (Testcontainers
 	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m db
 
 test-all: ## Every backend test (unit + db + integration) with the coverage gate
-	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "" --cov
+	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "not observability" --cov
 
 lint: ## Lint, format check, type check, architecture contracts
 	$(BACKEND) uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports
@@ -60,6 +63,25 @@ up: ## Build, apply migrations and start Postgres + API in Podman (data volume i
 
 down: ## Stop the containers (data volume is kept)
 	$(COMPOSE) down
+
+obs-up: ## Start the telemetry stores (Prometheus :9090, Loki :3100, Jaeger :16686, Alertmanager :9093)
+	$(COMPOSE_OBS) up -d prometheus alertmanager loki jaeger
+
+obs-down: ## Stop the telemetry stores (data kept)
+	$(COMPOSE_OBS) stop prometheus alertmanager loki jaeger
+
+obs-ps: ## Status of the telemetry stores
+	$(COMPOSE_OBS) ps
+
+obs-stats: ## Memory use of the telemetry stores (budget 2.5 GB)
+	podman stats --no-stream --format '{{.Name}}\t{{.MemUsage}}' | grep -E 'prometheus|alertmanager|loki|jaeger'
+
+test-obs: ## Push synthetic OTLP into each store and query it back (needs obs-up)
+	$(BACKEND) uv run pytest -m observability -v
+
+test-rules: ## Unit-test the Prometheus recording rules with promtool
+	podman run --rm --entrypoint promtool -v ./deploy/prometheus:/p:ro,Z $(PROM_IMAGE) test rules /p/tests/red_test.yml
+	podman run --rm --entrypoint promtool -v ./deploy/prometheus:/p:ro,Z $(PROM_IMAGE) check rules /p/rules/red.yml
 
 logs: ## Follow container logs
 	$(COMPOSE) logs -f

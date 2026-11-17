@@ -1,0 +1,12 @@
+# Alertmanager. Until Step 10 (rule packs + webhook ingestion) alerts go
+# nowhere; Step 10 replaces the receiver with a webhook to
+# sentinel-api /api/v1/ingest/alertmanager authenticated with an API key.
+route:
+  receiver: "null"
+  group_by: ["alertname", "job", "service_name"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: "null"

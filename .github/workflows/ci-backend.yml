@@ -65,8 +65,9 @@ jobs:
       - name: pytest (all suites incl. db + integration, Testcontainers on Podman)
         env:
           TESTCONTAINERS_RYUK_DISABLED: "true"
-        # -m "" selects every test; the coverage gate applies to the combined run.
-        run: uv run pytest -m "" -v --cov --cov-report=term
+        # Every suite except `observability` (that one needs the telemetry stores and
+        # runs in ci-observability.yml). The coverage gate applies to this combined run.
+        run: uv run pytest -m "not observability" -v --cov --cov-report=term
 
   image:
     name: multi-arch image build (Podman)

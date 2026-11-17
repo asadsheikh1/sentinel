@@ -1,0 +1,92 @@
+# SENTINEL telemetry stores. Used together with compose.yaml:
+#   make obs-up   (= podman compose -f compose.yaml -f compose.observability.yaml up -d)
+#
+# Images are pinned by tag AND multi-arch digest. Ports are bound to 127.0.0.1
+# for local development only; nothing here is reachable from outside the host.
+# On AWS these services get no published ports at all (only the gateway
+# Collector and SENTINEL talk to them over the internal network).
+#
+# Memory limits: 768 + 640 + 512 + 128 = 2048 MiB (budget: 2.5 GB).
+
+services:
+  prometheus:
+    image: docker.io/prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=4GB
+      - --web.enable-otlp-receiver
+      - --web.listen-address=:9090
+    volumes:
+      - promdata:/prometheus
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+      - ../prometheus/rules:/etc/prometheus/rules:ro,Z
+    ports: ["127.0.0.1:9090:9090"]
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    networks: [telemetry]
+
+  alertmanager:
+    image: docker.io/prom/alertmanager:v0.35.0@sha256:e638797febd034838eca8b98cdbd46f951e9bf7f178777aa8669167406a9946c
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --data.retention=120h
+    volumes:
+      - amdata:/alertmanager
+      - ../alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro,Z
+    ports: ["127.0.0.1:9093:9093"]
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    networks: [telemetry]
+
+  loki:
+    image: docker.io/grafana/loki:3.7.10@sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - lokidata:/loki
+      - ../loki/loki.yaml:/etc/loki/loki.yaml:ro,Z
+    ports: ["127.0.0.1:3100:3100"]
+    mem_limit: 640m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    restart: unless-stopped
+    networks: [telemetry]
+
+  jaeger:
+    image: docker.io/jaegertracing/jaeger:2.23.0@sha256:3823829974ccfc2485d2e48b165579091f32295022ae80ca49704e2f4834116e
+    command: ["--config", "/etc/jaeger/config.yaml"]
+    volumes:
+      # :U (Podman) chowns the volume to the image's non-root user, so Jaeger needn't run as root.
+      - jaegerdata:/badger:U
+      - ../jaeger/config.yaml:/etc/jaeger/config.yaml:ro,Z
+    ports:
+      - "127.0.0.1:16686:16686" # query API v3 + UI
+      - "127.0.0.1:4317:4317"   # OTLP gRPC (direct, dev/tests only)
+      - "127.0.0.1:4318:4318"   # OTLP HTTP (direct, dev/tests only)
+    mem_limit: 512m
+    restart: unless-stopped
+    networks: [telemetry]
+
+networks:
+  telemetry: {}
+
+volumes:
+  promdata:
+  amdata:
+  lokidata:
+  jaegerdata:

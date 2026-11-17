@@ -1,0 +1,63 @@
+name: ci-observability
+
+on:
+  pull_request:
+    paths: &paths
+      - "deploy/compose/compose.observability.yaml"
+      - "deploy/prometheus/**"
+      - "deploy/alertmanager/**"
+      - "deploy/loki/**"
+      - "deploy/jaeger/**"
+      - "backend/tests/observability/**"
+      - ".github/workflows/ci-observability.yml"
+  push:
+    branches: [main]
+    paths: *paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stores:
+    name: telemetry stores accept OTLP and answer queries (rootless Podman)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.8"
+          enable-cache: true
+      - run: cd backend && uv sync --locked
+      - name: Install podman-compose
+        run: |
+          uv tool install podman-compose==1.6.0
+          echo "PODMAN_COMPOSE_PROVIDER=$(command -v podman-compose)" >> "$GITHUB_ENV"
+      - name: Validate configs
+        run: |
+          make test-rules
+          podman run --rm --entrypoint promtool -v ./deploy/prometheus:/etc/prometheus:ro,Z \
+            "$(grep -o 'docker.io/prom/prometheus:[^ ]*' deploy/compose/compose.observability.yaml)" \
+            check config /etc/prometheus/prometheus.yml
+      - name: Start stores
+        run: |
+          make obs-up
+          for i in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:9090/-/ready >/dev/null && \
+            curl -fsS http://127.0.0.1:3100/ready >/dev/null && \
+            curl -fsS http://127.0.0.1:9093/-/ready >/dev/null && \
+            curl -fsS http://127.0.0.1:16686/api/v3/services >/dev/null && exit 0
+            sleep 2
+          done
+          make obs-ps; podman compose -f deploy/compose/compose.yaml -f deploy/compose/compose.observability.yaml logs; exit 1
+      - name: Push OTLP and query it back
+        run: make test-obs
+      - name: Memory use (budget 2.5 GB)
+        if: always()
+        run: make obs-stats
+      - name: Logs on failure
+        if: failure()
+        run: podman compose -f deploy/compose/compose.yaml -f deploy/compose/compose.observability.yaml logs --tail 60
