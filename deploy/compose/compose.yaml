@@ -58,9 +58,11 @@ services:
       SENTINEL_COOKIE_SECURE: ${SENTINEL_COOKIE_SECURE:-false}
     ports:
       - "127.0.0.1:8000:8000"
+    # Not `depends_on: migrate`: Podman 4.x tries to restart a dependency that has
+    # exited, and fails. `make up` waits for migrate and checks that it succeeded.
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

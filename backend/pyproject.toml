@@ -10,6 +10,7 @@ dependencies = [
     "argon2-cffi>=25.1.0",
     "asyncpg>=0.32.0",
     "fastapi>=0.163.1",
+    "httpx>=0.28.1",
     "pydantic-settings>=2.16.3",
     "pydantic[email]>=2.14.3",
     "sqlalchemy[asyncio]>=2.1.8",
@@ -51,7 +52,7 @@ select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "RUF", "ASYNC", "PT", "N", 
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]  # assert and dummy passwords are fine in tests
+"tests/**" = ["S101", "S105", "S106", "S603", "S607"]  # assert and dummy passwords are fine in tests
 "src/sentinel/db/migrations/versions/**" = ["E501", "S608"]  # unwrapped; SQL from constants only
 
 # ---------------------------------------------------------------- mypy
@@ -69,11 +70,12 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "-m", "not integration and not db and not observability"]
+addopts = ["-ra", "--strict-markers", "-m", "not integration and not db and not observability and not gateway"]
 markers = [
   "integration: needs a container engine (Podman/Docker); run with `make test-integration`",
   "db: needs a real Postgres (Testcontainers); run with `make test-db`",
   "observability: needs the telemetry stores running (`make obs-up`); run with `make test-obs`",
+  "gateway: needs the full stack running (`make stack-up-fast`); run with `make test-gateway`",
 ]
 asyncio_mode = "auto"
 # One event loop for the whole session so the session-scoped Postgres fixtures
@@ -100,11 +102,12 @@ fail_under = 85
 root_package = "sentinel"
 
 [[tool.importlinter.contracts]]
-name = "Layering: cli -> api -> auth -> security -> db -> log -> config"
+name = "Layering: cli -> api -> integrations -> auth -> security -> db -> log -> config"
 type = "layers"
 layers = [
   "sentinel.cli",
   "sentinel.api",
+  "sentinel.integrations",
   "sentinel.auth",
   "sentinel.security",
   "sentinel.db",

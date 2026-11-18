@@ -67,7 +67,7 @@ jobs:
           TESTCONTAINERS_RYUK_DISABLED: "true"
         # Every suite except `observability` (that one needs the telemetry stores and
         # runs in ci-observability.yml). The coverage gate applies to this combined run.
-        run: uv run pytest -m "not observability" -v --cov --cov-report=term
+        run: uv run pytest -m "not observability and not gateway" -v --cov --cov-report=term
 
   image:
     name: multi-arch image build (Podman)

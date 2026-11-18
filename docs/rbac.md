@@ -38,10 +38,22 @@ Machine keys (`X-Sentinel-Key`) carry scopes, never user permissions.
 | POST | `/api/v1/auth/login` | public | everyone |
 | POST | `/api/v1/auth/logout` | any signed-in user | all roles |
 | GET | `/api/v1/auth/me` | any signed-in user | all roles |
+| GET | `/api/v1/entities` | `incidents:read` | viewer, responder, approver, admin |
+| GET | `/api/v1/entities/{entity_id}` | `incidents:read` | viewer, responder, approver, admin |
+| GET | `/api/v1/entities/{entity_id}/relations` | `incidents:read` | viewer, responder, approver, admin |
+| GET | `/api/v1/integrations` | `incidents:read` | viewer, responder, approver, admin |
+| POST | `/api/v1/integrations` | `integrations:manage` | admin |
+| DELETE | `/api/v1/integrations/{integration_id}` | `integrations:manage` | admin |
+| GET | `/api/v1/integrations/{integration_id}` | `integrations:manage` | admin |
+| PATCH | `/api/v1/integrations/{integration_id}` | `integrations:manage` | admin |
+| GET | `/api/v1/integrations/{integration_id}/status` | `incidents:read` | viewer, responder, approver, admin |
+| POST | `/api/v1/integrations/{integration_id}/tokens/revoke` | `integrations:manage` | admin |
+| POST | `/api/v1/integrations/{integration_id}/tokens/rotate` | `integrations:manage` | admin |
 | GET | `/api/v1/meta` | any signed-in user | all roles |
 | GET | `/api/v1/users` | `users:manage` | admin |
 | POST | `/api/v1/users` | `users:manage` | admin |
 | PATCH | `/api/v1/users/{user_id}` | `users:manage` | admin |
 | POST | `/api/v1/users/{user_id}/invite` | `users:manage` | admin |
 | GET | `/healthz` | public | everyone |
+| GET | `/internal/ingest-auth` | internal proxy secret | SENTINEL's reverse proxy only |
 | GET | `/readyz` | public | everyone |

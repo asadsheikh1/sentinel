@@ -6,6 +6,8 @@ COMPOSE   := podman compose -f deploy/compose/compose.yaml
 # Core + telemetry stores (Prometheus, Alertmanager, Loki, Jaeger).
 COMPOSE_OBS := podman compose -f deploy/compose/compose.yaml -f deploy/compose/compose.observability.yaml
 PROM_IMAGE := $(shell grep -o 'docker.io/prom/prometheus:[^ ]*' deploy/compose/compose.observability.yaml)
+# Fails the target if the one-shot database migration did not succeed.
+WAIT_MIGRATE = @test "$$(podman wait sentinel_migrate_1)" = "0" || { echo "Database migration failed:"; podman logs sentinel_migrate_1; exit 1; }
 BACKEND   := cd backend &&
 FRONTEND  := cd frontend &&
 # Testcontainers talks to Podman through its Docker-compatible API socket.
@@ -14,7 +16,8 @@ INTEGRATION_ENV = DOCKER_HOST=unix://$(PODMAN_SOCK) TESTCONTAINERS_RYUK_DISABLED
 
 .PHONY: help install dev dev-frontend test test-integration test-db test-all lint format build \
         up down logs ps clean migrate migration db-current db-docs db-shell db-reset \
-        rbac-docs create-admin obs-up obs-down obs-ps obs-stats test-obs test-rules
+        rbac-docs create-admin obs-up obs-down obs-ps obs-stats test-obs test-rules \
+        stack-up stack-up-fast stack-down test-gateway
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -41,7 +44,7 @@ test-db: ## Database tests against a throwaway pgvector Postgres (Testcontainers
 	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m db
 
 test-all: ## Every backend test (unit + db + integration) with the coverage gate
-	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "not observability" --cov
+	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "not observability and not gateway" --cov
 
 lint: ## Lint, format check, type check, architecture contracts
 	$(BACKEND) uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports
@@ -60,6 +63,7 @@ up: ## Build, apply migrations and start Postgres + API in Podman (data volume i
 	@# podman-compose only recreates a container when its *config* changes, not its image,
 	@# so force it: otherwise `migrate` and `api` keep running the previous build.
 	$(COMPOSE) up -d --force-recreate
+	$(WAIT_MIGRATE)
 
 down: ## Stop the containers (data volume is kept)
 	$(COMPOSE) down
@@ -75,6 +79,23 @@ obs-ps: ## Status of the telemetry stores
 
 obs-stats: ## Memory use of the telemetry stores (budget 2.5 GB)
 	podman stats --no-stream --format '{{.Name}}\t{{.MemUsage}}' | grep -E 'prometheus|alertmanager|loki|jaeger'
+
+stack-up: ## Start everything: Postgres, API, telemetry stores, gateway (ingest on :4319)
+	$(COMPOSE_OBS) build
+	$(COMPOSE_OBS) up -d --force-recreate
+	$(WAIT_MIGRATE)
+
+stack-up-fast: ## Same, with short health intervals (used by test-gateway)
+	$(COMPOSE_OBS) build
+	SENTINEL_INTEGRATION_FLUSH_INTERVAL_S=1 SENTINEL_INTEGRATION_STALE_AFTER_S=8 \
+	SENTINEL_ENTITY_DISCOVERY_INTERVAL_S=3 $(COMPOSE_OBS) up -d --force-recreate
+	$(WAIT_MIGRATE)
+
+stack-down: ## Stop everything (data kept)
+	$(COMPOSE_OBS) down
+
+test-gateway: ## End-to-end ingestion tests (needs stack-up-fast)
+	$(BACKEND) uv run pytest -m gateway -v
 
 test-obs: ## Push synthetic OTLP into each store and query it back (needs obs-up)
 	$(BACKEND) uv run pytest -m observability -v

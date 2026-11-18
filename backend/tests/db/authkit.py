@@ -32,6 +32,7 @@ def make_settings(db_url: str, **overrides: Any) -> Settings:
         "database_url": SecretStr(db_url),
         "secret_key": SecretStr("test-secret-key-for-auth-tests-0123456789"),
         "login_rate_limit_per_minute": 10_000,
+        "background_jobs_enabled": False,
         **overrides,
     }
     return Settings(_env_file=None, **values)  # type: ignore[call-arg]

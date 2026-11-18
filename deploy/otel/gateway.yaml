@@ -1,0 +1,141 @@
+# SENTINEL ingestion gateway. Every pushed signal passes through here, after
+# Caddy has authenticated the ingest token (deploy/caddy/Caddyfile).
+#
+#   client -> Caddy (forward_auth) -> this Collector -> Prometheus / Loki / Jaeger
+#
+# This Collector is never published: only Caddy can reach it.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        include_metadata: true # exposes Caddy's identity headers to resource/identity
+        max_request_body_size: 10485760 # 10 MiB
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+
+  # Identity comes only from the authenticated token. Whatever the client sent
+  # is deleted first, so an integration can't impersonate another one.
+  resource/identity:
+    attributes:
+      - { key: sentinel.integration.id, action: delete }
+      - { key: sentinel.integration.kind, action: delete }
+      - key: sentinel.integration.id
+        action: upsert
+        from_context: metadata.x-sentinel-integration-id
+      - key: sentinel.integration.kind
+        action: upsert
+        from_context: metadata.x-sentinel-integration-kind
+
+  transform/normalise:
+    error_mode: ignore
+    log_statements:
+      # Common attribute variants -> OTel semantic conventions (shared by all signals).
+      - &resource_rules
+        context: resource
+        statements:
+          - set(resource.attributes["host.name"], resource.attributes["host"]) where resource.attributes["host.name"] == nil and resource.attributes["host"] != nil
+          - delete_key(resource.attributes, "host")
+          - set(resource.attributes["deployment.environment.name"], resource.attributes["deployment.environment"]) where resource.attributes["deployment.environment.name"] == nil and resource.attributes["deployment.environment"] != nil
+          - delete_key(resource.attributes, "deployment.environment")
+          - set(resource.attributes["service.name"], resource.attributes["container.name"]) where resource.attributes["container.name"] != nil and (resource.attributes["service.name"] == nil or IsMatch(resource.attributes["service.name"], "^unknown_service"))
+      - context: log
+        statements:
+          # Text severities -> OTel SeverityNumber
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.severity_number == 0 and IsMatch(log.severity_text, "(?i)^(d|debug|trace)$")
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_number == 0 and IsMatch(log.severity_text, "(?i)^(i|info|information|notice)$")
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.severity_number == 0 and IsMatch(log.severity_text, "(?i)^(w|warn|warning)$")
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.severity_number == 0 and IsMatch(log.severity_text, "(?i)^(e|err|error)$")
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.severity_number == 0 and IsMatch(log.severity_text, "(?i)^(f|fatal|crit|critical|panic|emerg|alert)$")
+          # Secrets in log text ($$ is a literal $ in Collector config)
+          - replace_pattern(log.body, "(?i)(password|passwd|pwd|secret|api[_-]?key|token)([\"']?\\s*[=:]\\s*[\"']?)[^\\s\"',;&]+", "$$1$$2[REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "(?i)bearer\\s+[a-z0-9._~+/=-]+", "Bearer [REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "\\b(sk_live|sit)_[a-z0-9]{8}_[A-Za-z0-9_-]{20,}", "[REDACTED]") where IsString(log.body)
+          - replace_pattern(log.body, "\\bAKIA[0-9A-Z]{16}\\b", "[REDACTED]") where IsString(log.body)
+    trace_statements:
+      - *resource_rules
+    metric_statements:
+      - *resource_rules
+      - context: datapoint
+        statements:
+          # Cardinality guard: unbounded labels never become Prometheus series.
+          - delete_matching_keys(datapoint.attributes, "^(url\\.full|url\\.query|url\\.path|http\\.url|http\\.target|user\\.(id|email|name)|session\\.id|request\\.id|trace_id|span_id)$")
+          - truncate_all(datapoint.attributes, 128)
+          - limit(datapoint.attributes, 20, ["http.route", "http.request.method", "http.response.status_code", "server.address"])
+
+  redaction:
+    allow_all_keys: true
+    summary: silent
+    blocked_key_patterns:
+      - "(?i)^(.*[._-])?(password|passwd|secret|api[_-]?key|authorization|cookie|set-cookie|token)$"
+    blocked_values:
+      - "(?i)bearer\\s+[a-z0-9._~+/=-]+"
+      - "\\bAKIA[0-9A-Z]{16}\\b"
+      - "\\b(sk_live|sit)_[a-z0-9]{8}_[A-Za-z0-9_-]{20,}"
+      - "\\b4[0-9]{12}(?:[0-9]{3})?\\b" # Visa
+      - "\\b5[1-5][0-9]{14}\\b" # Mastercard
+
+  batch:
+    timeout: 2s
+
+  # The count connector emits delta sums; Prometheus stores cumulative ones.
+  delta_to_cumulative:
+    max_stale: 15m
+
+connectors:
+  # One small summary metric per resource, whatever the signal. Entity discovery
+  # reads these, so logs-only and traces-only sources are discovered too.
+  count:
+    logs:
+      sentinel.telemetry.logs:
+        description: Log records received through the gateway
+    spans:
+      sentinel.telemetry.spans:
+        description: Spans received through the gateway
+    datapoints:
+      sentinel.telemetry.datapoints:
+        description: Metric data points received through the gateway
+
+exporters:
+  otlp_http/prometheus:
+    metrics_endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
+    compression: none
+  otlp_http/loki:
+    logs_endpoint: http://loki:3100/otlp/v1/logs
+    compression: none
+  otlp_http/jaeger:
+    traces_endpoint: http://jaeger:4318/v1/traces
+    compression: none
+
+service:
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/identity, transform/normalise, redaction, batch]
+      exporters: [otlp_http/prometheus, count]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/identity, transform/normalise, redaction, batch]
+      exporters: [otlp_http/loki, count]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/identity, transform/normalise, redaction, batch]
+      exporters: [otlp_http/jaeger, count]
+    metrics/summary:
+      receivers: [count]
+      processors: [delta_to_cumulative, batch]
+      exporters: [otlp_http/prometheus]

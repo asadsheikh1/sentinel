@@ -11,12 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from sentinel import __version__
 from sentinel.api import errors
-from sentinel.api.routers import api_keys, audit, auth, users
+from sentinel.api.routers import api_keys, audit, auth, ingest_auth, integrations, users
 from sentinel.api.schemas import MetaOut
 from sentinel.api.security import authenticated, public
 from sentinel.auth.ratelimit import RateLimiter
 from sentinel.config import Settings, get_settings
 from sentinel.db.engine import create_engine, create_session_factory, ping
+from sentinel.integrations import jobs
+from sentinel.integrations.gate import IngestGate
 from sentinel.log import configure_logging
 
 
@@ -48,10 +50,15 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
         db_engine = engine or create_engine(settings)
         app.state.engine = db_engine
         app.state.session_factory = create_session_factory(db_engine)
+        gate = IngestGate(settings, app.state.session_factory)
+        app.state.ingest_gate = gate
+        tasks = jobs.start(gate) if settings.background_jobs_enabled else []
         log.info("app_started", env=settings.env.value, version=__version__)
         try:
             yield
         finally:
+            if tasks:
+                await jobs.stop(tasks, gate)
             if owned:
                 await db_engine.dispose()
             log.info("app_stopped")
@@ -99,7 +106,8 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
     async def meta() -> MetaOut:
         return MetaOut(version=__version__, env=settings.env.value)
 
-    for module in (auth, users, api_keys, audit):
+    for module in (auth, users, api_keys, audit, integrations, ingest_auth):
         app.include_router(module.router)
+    app.include_router(integrations.entities_router)
 
     return app

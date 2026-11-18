@@ -12,7 +12,9 @@ BUDGET_MIB = 2.5 * 1024
 
 
 def _services() -> dict[str, Any]:
-    return yaml.safe_load(OBS.read_text())["services"]  # type: ignore[no-any-return]
+    """Services this file runs (`api` is only an overlay on compose.yaml)."""
+    services = yaml.safe_load(OBS.read_text())["services"]
+    return {name: svc for name, svc in services.items() if "image" in svc}
 
 
 def _mib(limit: str) -> float:
