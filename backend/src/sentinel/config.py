@@ -23,6 +23,7 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
 # Insecure placeholder so dev/test work out of the box; rejected in prod.
 _DEV_SECRET_KEY = "dev-only-insecure-secret-key-change-me-0000"  # noqa: S105
+_DEV_INTERNAL_SECRET = "dev-only-internal-auth-secret-change-me-00"  # noqa: S105
 
 
 class Settings(BaseSettings):
@@ -68,12 +69,28 @@ class Settings(BaseSettings):
     invite_ttl_hours: int = Field(default=72, ge=1)
     password_min_length: int = Field(default=12, ge=8)
 
+    # Ingestion gateway. Caddy proves itself to /internal/ingest-auth with this secret.
+    internal_auth_secret: SecretStr = SecretStr(_DEV_INTERNAL_SECRET)
+    ingest_default_rate_limit_per_min: int = Field(default=600, ge=1)
+    ingest_auth_cache_ttl_s: float = Field(default=15.0, ge=0, le=30)
+
+    # Integration health. Stale after 270 s + one 30 s evaluation = within 5 minutes.
+    background_jobs_enabled: bool = True
+    integration_flush_interval_s: float = Field(default=30.0, gt=0)
+    integration_stale_after_s: float = Field(default=270.0, gt=0)
+    integration_max_series: int = Field(default=5000, ge=1)
+    entity_discovery_interval_s: float = Field(default=60.0, gt=0)
+    prometheus_url: str = "http://127.0.0.1:9090"
+
     @model_validator(mode="after")
     def _prod_requires_real_secret(self) -> "Settings":
         if self.env is Environment.PROD:
             key = self.secret_key.get_secret_value()
             if key == _DEV_SECRET_KEY or len(key) < 32:
                 raise ValueError("SENTINEL_SECRET_KEY must be set to >= 32 random chars in prod")
+            internal = self.internal_auth_secret.get_secret_value()
+            if internal == _DEV_INTERNAL_SECRET or len(internal) < 32:
+                raise ValueError("SENTINEL_INTERNAL_AUTH_SECRET must be >= 32 random chars in prod")
             if not self.cookie_secure:
                 raise ValueError("SENTINEL_COOKIE_SECURE must be true in prod")
         return self

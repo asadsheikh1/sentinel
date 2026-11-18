@@ -1,13 +1,33 @@
 """All ORM models. Importing this package registers every table on ``Base.metadata``."""
 
 from sentinel.db.models.identity import ApiKey, Session, User, UserInvite, UserRole
+from sentinel.db.models.integrations import (
+    SIGNALS,
+    Entity,
+    EntityRelation,
+    EntityType,
+    IngestToken,
+    Integration,
+    IntegrationKind,
+    IntegrationSignalStatus,
+    IntegrationStatus,
+)
 from sentinel.db.models.platform import JOB_STATUSES, ActorType, AuditLog, Job
 
 __all__ = [
     "JOB_STATUSES",
+    "SIGNALS",
     "ActorType",
     "ApiKey",
     "AuditLog",
+    "Entity",
+    "EntityRelation",
+    "EntityType",
+    "IngestToken",
+    "Integration",
+    "IntegrationKind",
+    "IntegrationSignalStatus",
+    "IntegrationStatus",
     "Job",
     "Session",
     "User",

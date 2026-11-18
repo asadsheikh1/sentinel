@@ -6,6 +6,7 @@ Every route must declare exactly one access rule by depending on one of:
 * ``authenticated()``  — any logged-in user
 * ``require(perm)``    — a logged-in user whose role grants ``perm``
 * ``require_scope(s)`` — a machine API key carrying scope ``s``
+* ``internal_only()``  — SENTINEL's own reverse proxy (shared secret)
 
 The dependency callables carry an ``ACCESS_ATTR`` marker. A test walks every
 route in the app and fails if one has no marker, so a new endpoint can't ship
@@ -22,19 +23,21 @@ from fastapi import Depends, HTTPException, Request, status
 from sentinel.api.deps import DbSession
 from sentinel.auth.permissions import KeyScope, Permission
 from sentinel.auth.service import Actor, AuthService, KeyPrincipal, SessionPrincipal
+from sentinel.auth.tokens import constant_time_equals
 from sentinel.db.models import ActorType
 
 SESSION_COOKIE = "sentinel_session"
 CSRF_COOKIE = "sentinel_csrf"
 CSRF_HEADER = "X-CSRF-Token"
 API_KEY_HEADER = "X-Sentinel-Key"
+INTERNAL_AUTH_HEADER = "X-Sentinel-Internal-Auth"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 ACCESS_ATTR = "__sentinel_access__"
 
 
 @dataclass(frozen=True)
 class Access:
-    kind: Literal["public", "authenticated", "permission", "scope"]
+    kind: Literal["public", "authenticated", "permission", "scope", "internal"]
     value: str | None = None
 
     def describe(self) -> str:
@@ -43,6 +46,7 @@ class Access:
             "authenticated": "any signed-in user",
             "permission": f"`{self.value}`",
             "scope": f"API key scope `{self.value}`",
+            "internal": "internal proxy secret",
         }[self.kind]
 
 
@@ -132,6 +136,16 @@ def require_scope(scope: KeyScope) -> Callable[[Request, AuthService], Awaitable
         return principal
 
     return _mark(dep, Access("scope", scope.value))
+
+
+def internal_only() -> Callable[[Request], None]:
+    def dep(request: Request) -> None:
+        expected = request.app.state.settings.internal_auth_secret.get_secret_value()
+        presented = request.headers.get(INTERNAL_AUTH_HEADER, "")
+        if not constant_time_equals(presented, expected):
+            raise _unauthorized()
+
+    return _mark(dep, Access("internal"))
 
 
 def actor_for(request: Request, principal: SessionPrincipal | KeyPrincipal | None) -> Actor:

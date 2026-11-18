@@ -30,6 +30,11 @@ def test_all_tables_registered() -> None:
         "audit_log",
         "jobs",
         "user_invites",
+        "integrations",
+        "ingest_tokens",
+        "integration_signal_status",
+        "entities",
+        "entity_relations",
     }
 
 

@@ -1,0 +1,36 @@
+# SENTINEL ingestion endpoint (ingest.<domain> on AWS, port 4319 locally).
+# TLS is added with the AWS deployment (Step 33).
+{
+	auto_https off
+	admin off
+}
+
+:4319 {
+	request_body {
+		max_size 10MB
+	}
+
+	@otlp {
+		method POST
+		path /v1/metrics /v1/logs /v1/traces
+	}
+
+	# `route` keeps these directives in the written order.
+	route @otlp {
+		# Never trust identity headers sent by the client.
+		request_header -X-Sentinel-Integration-Id
+		request_header -X-Sentinel-Integration-Kind
+
+		forward_auth api:8000 {
+			uri /internal/ingest-auth
+			header_up X-Sentinel-Internal-Auth {$SENTINEL_INTERNAL_AUTH_SECRET}
+			copy_headers X-Sentinel-Integration-Id X-Sentinel-Integration-Kind
+		}
+
+		# The token stops here: the Collector and the stores never see it.
+		request_header -Authorization
+		reverse_proxy gateway:4318
+	}
+
+	respond 404
+}

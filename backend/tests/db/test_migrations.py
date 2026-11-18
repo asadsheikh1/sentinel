@@ -25,6 +25,11 @@ EXPECTED_TABLES = {
     "audit_log",
     "jobs",
     "user_invites",
+    "integrations",
+    "ingest_tokens",
+    "integration_signal_status",
+    "entities",
+    "entity_relations",
     "alembic_version",
 }
 

@@ -39,6 +39,85 @@
 
 **Indexes:** `ix_audit_log_target_type_target_id` (audit_log.target_type, audit_log.target_id); `ix_audit_log_ts` (audit_log.ts)
 
+## `entities`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `type` | entity_type | no |  |  |
+| `key` | TEXT | no |  |  |
+| `display_name` | TEXT | no |  |  |
+| `attributes` | JSONB | no | `'{}'::jsonb` |  |
+| `integration_ids` | UUID[] | no | `'{}'::uuid[]` |  |
+| `criticality` | TEXT | yes |  |  |
+| `first_seen` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `last_seen` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `id` | UUID | no | app: `uuid7()` | PK |
+
+**Indexes:** `ix_entities_last_seen` (entities.last_seen)
+
+## `entity_relations`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `from_entity_id` | UUID | no |  | PK → `entities.id` ON DELETE CASCADE |
+| `to_entity_id` | UUID | no |  | PK → `entities.id` ON DELETE CASCADE |
+| `relation` | TEXT | no |  | PK |
+| `source` | TEXT | no | `inferred` |  |
+| `confidence` | FLOAT | no | `1.0` |  |
+| `last_seen` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Checks:** `confidence BETWEEN 0 AND 1`; `relation IN ('runs_on','uses','fronts','built_from','member_of')`; `source IN ('inferred','manual')`
+
+**Indexes:** `ix_entity_relations_to_entity_id` (entity_relations.to_entity_id)
+
+## `ingest_tokens`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `integration_id` | UUID | no |  | → `integrations.id` ON DELETE CASCADE |
+| `prefix` | VARCHAR(8) | no |  |  |
+| `token_hash` | VARCHAR(64) | no |  | unique |
+| `rate_limit_per_min` | INTEGER | no |  |  |
+| `last_used_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `revoked_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `id` | UUID | no | app: `uuid7()` | PK |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Checks:** `char_length(prefix) = 8`; `rate_limit_per_min >= 1`; `char_length(token_hash) = 64`
+
+**Indexes:** `ix_ingest_tokens_integration_id` (ingest_tokens.integration_id)
+
+## `integration_signal_status`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `integration_id` | UUID | no |  | PK → `integrations.id` ON DELETE CASCADE |
+| `signal` | TEXT | no |  | PK |
+| `last_seen_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `last_count_window` | BIGINT | no | `0` |  |
+| `last_error` | TEXT | yes |  |  |
+
+**Checks:** `signal IN ('metrics','logs','traces','events')`
+
+## `integrations`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `name` | TEXT | no |  | unique |
+| `kind` | integration_kind | no |  |  |
+| `environment` | TEXT | no | `dev` |  |
+| `config` | JSONB | no | `'{}'::jsonb` |  |
+| `config_hash` | VARCHAR(64) | no |  |  |
+| `expected_signals` | TEXT[] | no | `'{}'::text[]` |  |
+| `status` | integration_status | no | `pending` |  |
+| `status_reason` | TEXT | yes |  |  |
+| `created_by` | UUID | yes |  | → `users.id` ON DELETE SET NULL |
+| `id` | UUID | no | app: `uuid7()` | PK |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Checks:** `expected_signals <@ ARRAY['metrics','logs','traces','events']::text[]`; `char_length(name) BETWEEN 1 AND 100`
+
 ## `jobs`
 
 | Column | Type | Null | Default | Key / reference |

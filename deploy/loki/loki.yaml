@@ -44,6 +44,8 @@ limits_config:
         - action: index_label
           attributes:
             - sentinel.integration.id
+            - sentinel.integration.kind
+            - deployment.environment.name
 
 compactor:
   working_directory: /loki/compactor

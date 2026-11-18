@@ -6,7 +6,7 @@
 # On AWS these services get no published ports at all (only the gateway
 # Collector and SENTINEL talk to them over the internal network).
 #
-# Memory limits: 768 + 640 + 512 + 128 = 2048 MiB (budget: 2.5 GB).
+# Memory limits: 768 + 640 + 512 + 128 + 256 + 64 = 2368 MiB (budget: 2.5 GB).
 
 services:
   prometheus:
@@ -82,8 +82,50 @@ services:
     restart: unless-stopped
     networks: [telemetry]
 
+  # The ingestion gateway: authenticates, normalises, and forwards to the stores.
+  gateway:
+    image: docker.io/otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea
+    command: ["--config=/etc/otelcol/gateway.yaml"]
+    volumes:
+      - ../otel/gateway.yaml:/etc/otelcol/gateway.yaml:ro,Z
+    mem_limit: 256m
+    depends_on: [prometheus, loki, jaeger]
+    restart: unless-stopped
+    networks: [telemetry] # no published port: only Caddy can reach it
+
+  # The only way in: checks the ingest token, then proxies to the gateway.
+  caddy:
+    image: docker.io/library/caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    environment:
+      SENTINEL_INTERNAL_AUTH_SECRET: ${SENTINEL_INTERNAL_AUTH_SECRET:-dev-only-internal-auth-secret-change-me-00}
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+    ports: ["127.0.0.1:4319:4319"]
+    mem_limit: 64m
+    depends_on: [gateway, api]
+    restart: unless-stopped
+    networks:
+      default: {}
+      telemetry: {}
+      ingest:
+        aliases: [ingest.sentinel.internal]
+
+  # Adds the settings the API needs once the gateway and stores are running.
+  api:
+    environment:
+      SENTINEL_PROMETHEUS_URL: http://prometheus:9090
+      SENTINEL_INTERNAL_AUTH_SECRET: ${SENTINEL_INTERNAL_AUTH_SECRET:-dev-only-internal-auth-secret-change-me-00}
+      SENTINEL_INTEGRATION_FLUSH_INTERVAL_S: ${SENTINEL_INTEGRATION_FLUSH_INTERVAL_S:-30}
+      SENTINEL_INTEGRATION_STALE_AFTER_S: ${SENTINEL_INTEGRATION_STALE_AFTER_S:-270}
+      SENTINEL_ENTITY_DISCOVERY_INTERVAL_S: ${SENTINEL_ENTITY_DISCOVERY_INTERVAL_S:-60}
+    networks: [default, telemetry]
+
 networks:
+  default: {}
   telemetry: {}
+  # Monitored apps on this machine (AVIRO) join this network to reach Caddy, and nothing else.
+  ingest:
+    name: sentinel-ingest
 
 volumes:
   promdata:

@@ -155,7 +155,13 @@ def test_prod_rejects_default_secret_and_insecure_cookies() -> None:
     with pytest.raises(ValidationError, match="SECRET_KEY"):
         Settings(env=Environment.PROD, _env_file=None)  # type: ignore[call-arg]
     with pytest.raises(ValidationError, match="COOKIE_SECURE"):
-        Settings(env=Environment.PROD, secret_key="x" * 40, cookie_secure=False, _env_file=None)  # type: ignore[call-arg, arg-type]
+        Settings(
+            env=Environment.PROD,
+            secret_key="x" * 40,
+            internal_auth_secret="y" * 40,
+            cookie_secure=False,
+            _env_file=None,
+        )  # type: ignore[call-arg, arg-type]
 
 
 # ---------------------------------------------------- route declarations
@@ -175,7 +181,8 @@ def test_route_walk_sees_every_openapi_operation() -> None:
     spec = {
         (method.upper(), path) for path, ops in app.openapi()["paths"].items() for method in ops
     }
-    walked = {(r.method, r.path) for r in route_table(app)}
+    # Internal routes are deliberately left out of the public API schema.
+    walked = {(r.method, r.path) for r in route_table(app) if r.access[0].kind != "internal"}
     assert walked == spec
 
 
