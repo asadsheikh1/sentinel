@@ -1,6 +1,6 @@
 # Step 6 report — Integration model, ingest tokens, OTLP ingestion gateway
 
-**Status:** done locally. CI: CI_RESULT
+**Status:** ✅ done. All acceptance criteria met. CI passes in both repos: 6 of 6 checks on SENTINEL and 2 of 2 on AVIRO.
 **PRs:** [SENTINEL PR #6](https://github.com/asadsheikh1/sentinel/pull/6) and [AVIRO PR #2](https://github.com/asadsheikh1/aviro-shop/pull/2) (not merged; merging is your decision)
 **Date:** 2026-11-18
 
@@ -51,6 +51,12 @@
 I removed identity overwrite, normalisation and redaction from the gateway. Five end-to-end tests failed, as they should, and all passed again once the config was restored.
 
 That check also exposed one weak test: "service name from the container" still passed, because Loki fills in that name itself. It now checks Prometheus instead.
+
+## Problems found and fixed
+
+1. **The stack hung in CI for an hour.** `api` depended on the one-shot `migrate` container. Once `migrate` exits, GitHub's Podman 4.9 tries to restart it and fails; your Mac's Podman 6.2 doesn't. `api` now depends only on Postgres, and `make` waits for the migration and stops with its logs if it failed. The CI job also has a time limit now.
+2. **Loki always reported `unhealthy` (from Step 5).** Its health check used `wget`, which the image doesn't include. The check is removed; readiness comes from Loki's `/ready` endpoint.
+3. **Collector component names changed in version 0.165** (`otlp_http`, `delta_to_cumulative`, and resource rules inside each signal). Found by validating the config against the real binary.
 
 ## Decisions worth reviewing
 
