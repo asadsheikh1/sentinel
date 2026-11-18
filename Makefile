@@ -6,6 +6,8 @@ COMPOSE   := podman compose -f deploy/compose/compose.yaml
 # Core + telemetry stores (Prometheus, Alertmanager, Loki, Jaeger).
 COMPOSE_OBS := podman compose -f deploy/compose/compose.yaml -f deploy/compose/compose.observability.yaml
 PROM_IMAGE := $(shell grep -o 'docker.io/prom/prometheus:[^ ]*' deploy/compose/compose.observability.yaml)
+# Fails the target if the one-shot database migration did not succeed.
+WAIT_MIGRATE = @test "$$(podman wait sentinel_migrate_1)" = "0" || { echo "Database migration failed:"; podman logs sentinel_migrate_1; exit 1; }
 BACKEND   := cd backend &&
 FRONTEND  := cd frontend &&
 # Testcontainers talks to Podman through its Docker-compatible API socket.
@@ -61,6 +63,7 @@ up: ## Build, apply migrations and start Postgres + API in Podman (data volume i
 	@# podman-compose only recreates a container when its *config* changes, not its image,
 	@# so force it: otherwise `migrate` and `api` keep running the previous build.
 	$(COMPOSE) up -d --force-recreate
+	$(WAIT_MIGRATE)
 
 down: ## Stop the containers (data volume is kept)
 	$(COMPOSE) down
@@ -80,11 +83,13 @@ obs-stats: ## Memory use of the telemetry stores (budget 2.5 GB)
 stack-up: ## Start everything: Postgres, API, telemetry stores, gateway (ingest on :4319)
 	$(COMPOSE_OBS) build
 	$(COMPOSE_OBS) up -d --force-recreate
+	$(WAIT_MIGRATE)
 
 stack-up-fast: ## Same, with short health intervals (used by test-gateway)
 	$(COMPOSE_OBS) build
 	SENTINEL_INTEGRATION_FLUSH_INTERVAL_S=1 SENTINEL_INTEGRATION_STALE_AFTER_S=8 \
 	SENTINEL_ENTITY_DISCOVERY_INTERVAL_S=3 $(COMPOSE_OBS) up -d --force-recreate
+	$(WAIT_MIGRATE)
 
 stack-down: ## Stop everything (data kept)
 	$(COMPOSE_OBS) down

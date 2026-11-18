@@ -59,11 +59,7 @@ services:
       - ../loki/loki.yaml:/etc/loki/loki.yaml:ro,Z
     ports: ["127.0.0.1:3100:3100"]
     mem_limit: 640m
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 40
+    # No container healthcheck: the Loki image has no wget or shell. Readiness is GET /ready.
     restart: unless-stopped
     networks: [telemetry]
 
