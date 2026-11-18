@@ -21,6 +21,7 @@ jobs:
   gateway:
     name: ingestion gateway end to end (rootless Podman)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
@@ -38,7 +39,15 @@ jobs:
           podman run --rm -v ./deploy/otel/gateway.yaml:/g.yaml:ro,Z "$image" validate --config=/g.yaml
       - name: Start the full stack
         run: |
-          make stack-up-fast
+          podman --version
+          if ! timeout 420 make stack-up-fast; then
+            echo "::error::stack did not start within 7 minutes"
+            podman ps -a
+            for c in postgres migrate api caddy gateway; do
+              echo "=== $c"; timeout 10 podman logs --tail 40 "sentinel_${c}_1" || true
+            done
+            exit 1
+          fi
           for i in $(seq 1 90); do
             curl -fsS http://127.0.0.1:8000/readyz >/dev/null && \
             curl -fsS http://127.0.0.1:3100/ready >/dev/null && \

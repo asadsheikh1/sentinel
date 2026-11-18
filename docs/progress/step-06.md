@@ -1,7 +1,7 @@
 # Step 6 report — Integration model, ingest tokens, OTLP ingestion gateway
 
 **Status:** done locally. CI: CI_RESULT
-**PRs:** PR_SENTINEL and PR_AVIRO (not merged; merging is your decision)
+**PRs:** [SENTINEL PR #6](https://github.com/asadsheikh1/sentinel/pull/6) and [AVIRO PR #2](https://github.com/asadsheikh1/aviro-shop/pull/2) (not merged; merging is your decision)
 **Date:** 2026-11-18
 
 ## What was built
