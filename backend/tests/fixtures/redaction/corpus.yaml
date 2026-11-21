@@ -1,0 +1,126 @@
+# Redaction corpus (Step 7). Every value here is FAKE.
+#
+# secrets: each `text` contains `secret`; after redaction `secret` must be gone.
+# benign:  each line must come out of redaction unchanged.
+secrets:
+  - kind: aws_access_key
+    secret: AKIAIOSFODNN7EXAMPLE
+    text: "boot env AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE region=eu-west-1"
+  - kind: aws_access_key (temporary)
+    secret: ASIAQWERTYUIOPASDFGH
+    text: "assumed role creds ASIAQWERTYUIOPASDFGH expire in 3600s"
+  - kind: aws_secret_access_key
+    secret: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+    text: "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+  - kind: github classic token
+    secret: ghp_FixtureTokenFixtureTokenFixtureToken12
+    text: "git clone https://x-access-token@github.com using ghp_FixtureTokenFixtureTokenFixtureToken12"
+  - kind: github fine-grained token
+    secret: github_pat_11AAAAAAA0FixtureFineGrainedTokenValue_abcdefghijklmnop
+    text: "GITHUB_TOKEN=github_pat_11AAAAAAA0FixtureFineGrainedTokenValue_abcdefghijklmnop"
+  - kind: github app token
+    secret: ghs_FixtureInstallationTokenValue1234567890ab
+    text: "installation token ghs_FixtureInstallationTokenValue1234567890ab acquired"
+  - kind: jwt
+    secret: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmaXh0dXJlIn0.c2lnbmF0dXJlLWZvci1maXh0dXJlcw
+    text: "session=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmaXh0dXJlIn0.c2lnbmF0dXJlLWZvci1maXh0dXJlcw"
+  - kind: bearer header
+    secret: opaque-access-token-12345
+    text: "GET /api with Authorization: Bearer opaque-access-token-12345"
+  - kind: basic auth header
+    secret: dXNlcjpwYXNzd29yZA==
+    text: "proxy sent Authorization: Basic dXNlcjpwYXNzd29yZA== upstream"
+  - kind: password in postgres url
+    secret: Pr0d-Passw0rd!
+    text: "connect postgres://shop:Pr0d-Passw0rd!@db.internal:5432/orders failed"
+  - kind: password in redis url
+    secret: s3cr3t-r3dis
+    text: "broker=redis://default:s3cr3t-r3dis@valkey:6379/0"
+  - kind: password in https url
+    secret: hunter2hunter2
+    text: "fetched https://admin:hunter2hunter2@registry.example.com/v2/"
+  - kind: password key=value
+    secret: correct-horse-battery
+    text: "login attempt user=alice password=correct-horse-battery"
+  - kind: password json
+    secret: tr0ub4dor&3
+    text: '{"user": "bob", "password": "tr0ub4dor&3"}'
+  - kind: api key colon
+    secret: k-4f8b2c9d1e7a
+    text: "x-api-key: k-4f8b2c9d1e7a"
+  - kind: client secret
+    secret: cs_9d8f7e6d5c4b3a
+    text: "oauth client_secret=cs_9d8f7e6d5c4b3a"
+  - kind: generic token
+    secret: tkn-abcdef123456
+    text: "refresh_token=tkn-abcdef123456 issued"
+  - kind: private key
+    secret: MIIEowIBAAKCAQEAfixturefixturefixture
+    text: |
+      loaded key:
+      -----BEGIN RSA PRIVATE KEY-----
+      MIIEowIBAAKCAQEAfixturefixturefixture
+      -----END RSA PRIVATE KEY-----
+  - kind: openssh private key
+    secret: b3BlbnNzaC1rZXktdjEAAAAAfixture
+    text: |
+      -----BEGIN OPENSSH PRIVATE KEY-----
+      b3BlbnNzaC1rZXktdjEAAAAAfixture
+      -----END OPENSSH PRIVATE KEY-----
+  - kind: slack token
+    secret: xoxb-1234567890-fixture-token
+    text: "notify via xoxb-1234567890-fixture-token"
+  - kind: stripe key
+    secret: sk_test_FixtureStripeKey1234567890
+    text: "stripe key sk_test_FixtureStripeKey1234567890 in env"
+  - kind: google api key
+    secret: AIzaSyFixtureFixtureFixtureFixture12345
+    text: "maps key=AIzaSyFixtureFixtureFixtureFixture12345"
+  - kind: sentinel api key
+    secret: sk_live_abcd1234_FixtureSecretPartFixtureSecretPart12
+    text: "X-Sentinel-Key: sk_live_abcd1234_FixtureSecretPartFixtureSecretPart12"
+  - kind: sentinel ingest token
+    secret: sit_abcd1234_FixtureIngestSecretFixtureIngestSecret1
+    text: "OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20sit_abcd1234_FixtureIngestSecretFixtureIngestSecret1"
+  - kind: email
+    secret: jane.doe@example.com
+    text: "password reset sent to jane.doe@example.com"
+  - kind: email (subdomain)
+    secret: ops+alerts@mail.example.co.uk
+    text: "pager rule notifies ops+alerts@mail.example.co.uk"
+  - kind: visa card
+    secret: "4111 1111 1111 1111"
+    text: "paid with 4111 1111 1111 1111 total=12900"
+  - kind: mastercard (dashes)
+    secret: 5555-5555-5555-4444
+    text: "card 5555-5555-5555-4444 declined"
+  - kind: unknown high-entropy token
+    secret: Zx8Qp2LmN4vR7tY1wK9sD3fG6hJ0aB5c
+    text: "config loaded with signing seed Zx8Qp2LmN4vR7tY1wK9sD3fG6hJ0aB5c"
+  - kind: base64 secret blob
+    secret: c2VjcmV0LXZhbHVlLWhlcmUtMTIzNDU2Nzg5MA==
+    text: "env DB_SEED c2VjcmV0LXZhbHVlLWhlcmUtMTIzNDU2Nzg5MA== loaded"
+  - kind: cookie value
+    secret: sess_8f7a6b5c4d3e
+    text: "Cookie: sess_8f7a6b5c4d3e"
+
+benign:
+  - "trace_id=4bf92f3577b34da6a3ce929d0e0e4736 span_id=00f067aa0ba902b7"
+  - "deployed commit 9fceb02d0ae598e95dc970b74767f19372d61af8 to orders"
+  - "image sha256 e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea pulled"
+  - "order 3f2504e0-4f89-11d3-9a0c-0305e82c3301 placed, total_cents=12900"
+  - 'File "/usr/lib/python3.12/site-packages/fastapi/routing.py", line 212, in run_endpoint_function'
+  - "KeyError: 'gift_message'"
+  - "pod orders-7d9f8b6c4-x2kqp restarted (OOMKilled)"
+  - "GET /api/products?limit=50 200 in 14ms"
+  - "POST /api/orders 504 Gateway Timeout after 3.01s"
+  - "psycopg_pool.PoolTimeout: couldn't get a connection after 0.05 sec"
+  - "connect postgres://db.internal:5432/orders timed out"
+  - "upstream https://registry.example.com/v2/library/caddy returned 429"
+  - "2026-11-21T08:47:04.123Z level=error service=orders msg=\"dependency call failed\""
+  - "host 10.89.0.5 port 8080 healthy; ipv6 fe80::1"
+  - "worker task aviro.fulfil_order[2b1c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b] succeeded in 0.05s"
+  - "http_server_request_duration_seconds_bucket le=0.5"
+  - "user_id=42 password_reset_required=false"
+  - "the token bucket refills every second"
+  - "SELECT id, total_cents FROM orders WHERE id = $1"

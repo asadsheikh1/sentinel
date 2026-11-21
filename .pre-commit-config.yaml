@@ -12,6 +12,8 @@ repos:
         args: ["--maxkb=500"]
       - id: check-merge-conflict
       - id: detect-private-key
+        # The redaction corpus holds FAKE private keys on purpose (see .gitleaks.toml).
+        exclude: ^backend/tests/fixtures/redaction/corpus\.yaml$
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1

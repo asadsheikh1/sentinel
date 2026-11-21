@@ -105,6 +105,13 @@ def _run_rbac_docs(args: argparse.Namespace) -> int:
     return write_or_check(app, args.output, check=args.check)
 
 
+def _run_telemetry(args: argparse.Namespace) -> int:
+    from sentinel.config import get_settings
+    from sentinel.telemetry import cli as telemetry_cli
+
+    return telemetry_cli.run(args, get_settings())
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sentinel", description="SENTINEL AI SRE")
     parser.add_argument("--version", action="version", version=f"sentinel {__version__}")
@@ -142,6 +149,11 @@ def build_parser() -> argparse.ArgumentParser:
     rbac.add_argument("--output", default="../docs/rbac.md")
     rbac.add_argument("--check", action="store_true", help="fail if the file is out of date")
     rbac.set_defaults(func=_run_rbac_docs)
+
+    from sentinel.telemetry import cli as telemetry_cli
+
+    telemetry_cli.add_parser(sub)
+    sub.choices["telemetry"].set_defaults(func=_run_telemetry)
     return parser
 
 

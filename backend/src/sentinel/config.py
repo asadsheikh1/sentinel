@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     integration_max_series: int = Field(default=5000, ge=1)
     entity_discovery_interval_s: float = Field(default=60.0, gt=0)
     prometheus_url: str = "http://127.0.0.1:9090"
+    loki_url: str = "http://127.0.0.1:3100"
+    jaeger_url: str = "http://127.0.0.1:16686"
+    telemetry_timeout_s: float = Field(default=10.0, gt=0, le=60)
+    telemetry_max_response_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
 
     @model_validator(mode="after")
     def _prod_requires_real_secret(self) -> "Settings":
