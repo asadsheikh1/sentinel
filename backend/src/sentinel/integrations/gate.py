@@ -127,6 +127,10 @@ class IngestGate:
         self._cache[token_hash] = (now + ttl, info)
         return info
 
+    async def authenticate(self, token: str) -> TokenInfo | None:
+        """Resolve a token without counting it as telemetry (agent config downloads)."""
+        return await self._lookup(token)
+
     async def check(self, token: str | None, signal: str | None) -> GateResult:
         if token is None or signal is None:
             return GateResult(401)

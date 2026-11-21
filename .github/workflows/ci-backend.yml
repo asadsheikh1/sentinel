@@ -4,6 +4,8 @@ on:
   pull_request:
     paths: &paths
       - "backend/**"
+      - "agent/**"
+      - ".containerignore"
       - "deploy/compose/**"
       - "scripts/db_roles.sql"
       - "docs/database.md"
@@ -67,7 +69,7 @@ jobs:
           TESTCONTAINERS_RYUK_DISABLED: "true"
         # Every suite except `observability` (that one needs the telemetry stores and
         # runs in ci-observability.yml). The coverage gate applies to this combined run.
-        run: uv run pytest -m "not observability and not gateway" -v --cov --cov-report=term
+        run: uv run pytest -m "not observability and not gateway and not agent" -v --cov --cov-report=term
 
   image:
     name: multi-arch image build (Podman)
@@ -83,7 +85,7 @@ jobs:
         run: |
           podman --version
           podman build --platform linux/amd64,linux/arm64 \
-            --manifest localhost/sentinel-api:ci -f backend/Containerfile backend
+            --manifest localhost/sentinel-api:ci -f backend/Containerfile .
           podman manifest inspect localhost/sentinel-api:ci | grep '"architecture"'
       - name: Smoke-test the image
         run: |

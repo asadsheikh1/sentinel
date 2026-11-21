@@ -21,6 +21,11 @@ otlp:
     - container.name
     - sentinel.integration.id
     - sentinel.integration.kind
+    - sentinel.agent.config_hash # lets SENTINEL show "agent config out of date"
+    # Agent per-process metrics (watched processes only, so bounded): without
+    # these, two processes on one host would map to the same series.
+    - process.executable.name
+    - process.pid
 
 storage:
   tsdb:

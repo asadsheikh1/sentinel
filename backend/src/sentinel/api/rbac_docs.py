@@ -37,6 +37,8 @@ class RouteInfo:
             return "API keys only"
         if a.kind == "internal":
             return "SENTINEL's reverse proxy only"
+        if a.kind == "ingest":
+            return "SENTINEL Agent (ingest token)"
         perm = Permission(str(a.value))
         return ", ".join(r.value for r in UserRole if perm in ROLE_PERMISSIONS[r])
 

@@ -1,0 +1,26 @@
+# SENTINEL Agent, container variant: the pinned OpenTelemetry Collector (contrib)
+# plus journalctl (the journald receiver runs it to read the host journal).
+#
+#   podman build -t localhost/sentinel-agent:0.165.0 -f agent/Containerfile agent
+#
+# Run it with the host mounted read-only at /hostfs; agent/install.sh --mode
+# container does this for you, together with the GET-only socket proxy.
+
+FROM docker.io/otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea AS otelcol
+
+FROM docker.io/library/debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+# systemd provides journalctl only; nothing here runs as init.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends systemd ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 10001 sentinel-agent \
+ && useradd --system --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin sentinel-agent \
+ && install -d -o 10001 -g 10001 -m 0750 /var/lib/sentinel-agent
+COPY --from=otelcol /otelcol-contrib /usr/local/bin/otelcol-contrib
+LABEL org.opencontainers.image.title="SENTINEL Agent" \
+      org.opencontainers.image.description="OpenTelemetry Collector contrib 0.165.0 configured by SENTINEL" \
+      org.opencontainers.image.licenses="Apache-2.0"
+USER 10001:10001
+VOLUME ["/var/lib/sentinel-agent"]
+ENTRYPOINT ["/usr/local/bin/otelcol-contrib"]
+CMD ["--config=/etc/sentinel-agent/config.yaml"]

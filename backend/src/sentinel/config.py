@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     integration_max_series: int = Field(default=5000, ge=1)
     entity_discovery_interval_s: float = Field(default=60.0, gt=0)
     prometheus_url: str = "http://127.0.0.1:9090"
+
+    # SENTINEL Agent. The public ingest URL agents send to and download their
+    # config and installer from (Caddy). `agent_dir` holds agent/ (templates,
+    # installer); unset means the repository's agent/ directory.
+    agent_public_endpoint: str = Field(
+        default="http://127.0.0.1:4319", pattern=r"^https?://[A-Za-z0-9.:\[\]-]+(:[0-9]+)?$"
+    )
+    agent_dir: str | None = None
     loki_url: str = "http://127.0.0.1:3100"
     jaeger_url: str = "http://127.0.0.1:16686"
     telemetry_timeout_s: float = Field(default=10.0, gt=0, le=60)

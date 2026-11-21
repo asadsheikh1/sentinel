@@ -1,0 +1,22 @@
+# A disposable "fresh machine" with systemd as PID 1, for installer tests.
+#   podman build --build-arg BASE=docker.io/library/ubuntu:24.04 -f Containerfile.systemd .
+#   podman build --build-arg BASE=docker.io/library/amazonlinux:2023 -f Containerfile.systemd .
+# Only what a minimal cloud image already has (systemd, journald, ps, ss); the
+# installer must add everything else itself.
+ARG BASE=docker.io/library/ubuntu:24.04
+FROM ${BASE}
+RUN set -eux; \
+    if command -v apt-get >/dev/null; then \
+      apt-get update; \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        systemd systemd-sysv dbus iproute2 procps; \
+      rm -rf /var/lib/apt/lists/*; \
+    else \
+      dnf install -y systemd util-linux shadow-utils procps-ng iproute; \
+      dnf clean all; \
+    fi; \
+    test -x /usr/lib/systemd/systemd; \
+    mkdir -p /var/log/journal; \
+    systemctl mask systemd-logind.service getty.target console-getty.service
+STOPSIGNAL SIGRTMIN+3
+CMD ["/usr/lib/systemd/systemd"]

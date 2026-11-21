@@ -11,6 +11,7 @@ dependencies = [
     "asyncpg>=0.32.0",
     "fastapi>=0.163.1",
     "httpx>=0.28.1",
+    "jinja2>=3.1.6",
     "pydantic-settings>=2.16.3",
     "pydantic[email]>=2.14.3",
     "sqlalchemy[asyncio]>=2.1.8",
@@ -71,12 +72,13 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "-m", "not integration and not db and not observability and not gateway"]
+addopts = ["-ra", "--strict-markers", "-m", "not integration and not db and not observability and not gateway and not agent"]
 markers = [
   "integration: needs a container engine (Podman/Docker); run with `make test-integration`",
   "db: needs a real Postgres (Testcontainers); run with `make test-db`",
   "observability: needs the telemetry stores running (`make obs-up`); run with `make test-obs`",
   "gateway: needs the full stack running (`make stack-up-fast`); run with `make test-gateway`",
+  "agent: installs the SENTINEL Agent on a test machine (`make test-agent`, needs stack-up-fast)",
 ]
 asyncio_mode = "auto"
 # One event loop for the whole session so the session-scoped Postgres fixtures

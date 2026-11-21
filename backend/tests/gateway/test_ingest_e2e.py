@@ -165,6 +165,30 @@ def test_only_otlp_paths_are_exposed(http: httpx.Client, admin: Admin) -> None:
     assert http.get(f"{INGEST}/api/v1/users", headers=auth).status_code == 404
 
 
+def test_only_agent_files_and_config_are_served_besides_otlp(
+    http: httpx.Client, admin: Admin
+) -> None:
+    """Step 8: the ingest endpoint also serves the installer and each agent's config."""
+    iid, token = admin.create(kind="linux_host")
+    other_iid, _ = admin.create(kind="linux_host")
+    auth = {"Authorization": f"Bearer {token}"}
+    install = http.get(f"{INGEST}/agent/install.sh")
+    assert install.status_code == 200
+    assert install.text.startswith("#!/usr/bin/env bash")
+    config = http.get(f"{INGEST}/api/v1/integrations/{iid}/agent-config", headers=auth)
+    assert config.status_code == 200
+    assert config.headers["x-sentinel-config-hash"]
+    # Another integration's config, other agent paths, and writes stay closed.
+    assert (
+        http.get(f"{INGEST}/api/v1/integrations/{other_iid}/agent-config", headers=auth).status_code
+        == 401
+    )
+    assert http.get(f"{INGEST}/api/v1/integrations/{iid}/setup", headers=auth).status_code == 404
+    assert http.get(f"{INGEST}/agent/README.md").status_code == 404
+    assert http.post(f"{INGEST}/agent/install.sh").status_code == 404
+    assert http.get(f"{INGEST}/api/v1/integrations/{iid}", headers=auth).status_code == 404
+
+
 def test_ingest_token_cannot_read_anything(http: httpx.Client, admin: Admin) -> None:
     _, token = admin.create()
     auth = {"Authorization": f"Bearer {token}"}

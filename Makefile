@@ -17,7 +17,7 @@ INTEGRATION_ENV = DOCKER_HOST=unix://$(PODMAN_SOCK) TESTCONTAINERS_RYUK_DISABLED
 .PHONY: help install dev dev-frontend test test-integration test-db test-all lint format build \
         up down logs ps clean migrate migration db-current db-docs db-shell db-reset \
         rbac-docs create-admin obs-up obs-down obs-ps obs-stats test-obs test-rules \
-        stack-up stack-up-fast stack-down test-gateway
+        stack-up stack-up-fast stack-down test-gateway test-agent
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -44,7 +44,7 @@ test-db: ## Database tests against a throwaway pgvector Postgres (Testcontainers
 	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m db
 
 test-all: ## Every backend test (unit + db + integration) with the coverage gate
-	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "not observability and not gateway" --cov
+	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "not observability and not gateway and not agent" --cov
 
 lint: ## Lint, format check, type check, architecture contracts
 	$(BACKEND) uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports
@@ -56,7 +56,7 @@ format: ## Auto-format backend and frontend
 
 build: ## Build the frontend bundle and the API image
 	$(FRONTEND) npm run build
-	podman build -t localhost/sentinel-api:dev -f backend/Containerfile backend
+	podman build -t localhost/sentinel-api:dev -f backend/Containerfile .
 
 up: ## Build, apply migrations and start Postgres + API in Podman (data volume is kept)
 	$(COMPOSE) build
@@ -96,6 +96,10 @@ stack-down: ## Stop everything (data kept)
 
 test-gateway: ## End-to-end ingestion tests (needs stack-up-fast)
 	$(BACKEND) uv run pytest -m gateway -v
+
+test-agent: ## Install the SENTINEL Agent on a disposable Ubuntu 24.04 systemd machine (needs stack-up-fast)
+	podman build -q -t localhost/sentinel-test-ubuntu:24.04 -f backend/tests/agent/Containerfile.systemd backend/tests/agent
+	$(BACKEND) uv run pytest -m agent -v
 
 test-obs: ## Push synthetic OTLP into each store and query it back (needs obs-up)
 	$(BACKEND) uv run pytest -m observability -v

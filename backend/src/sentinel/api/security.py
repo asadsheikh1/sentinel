@@ -7,6 +7,8 @@ Every route must declare exactly one access rule by depending on one of:
 * ``require(perm)``    — a logged-in user whose role grants ``perm``
 * ``require_scope(s)`` — a machine API key carrying scope ``s``
 * ``internal_only()``  — SENTINEL's own reverse proxy (shared secret)
+* ``ingest_token()``   — a SENTINEL Agent, with the ingest token of the integration
+                         named in the path (``{integration_id}``)
 
 The dependency callables carry an ``ACCESS_ATTR`` marker. A test walks every
 route in the app and fails if one has no marker, so a new endpoint can't ship
@@ -25,6 +27,8 @@ from sentinel.auth.permissions import KeyScope, Permission
 from sentinel.auth.service import Actor, AuthService, KeyPrincipal, SessionPrincipal
 from sentinel.auth.tokens import constant_time_equals
 from sentinel.db.models import ActorType
+from sentinel.integrations.gate import IngestGate, TokenInfo
+from sentinel.integrations.tokens import bearer_token
 
 SESSION_COOKIE = "sentinel_session"
 CSRF_COOKIE = "sentinel_csrf"
@@ -37,7 +41,7 @@ ACCESS_ATTR = "__sentinel_access__"
 
 @dataclass(frozen=True)
 class Access:
-    kind: Literal["public", "authenticated", "permission", "scope", "internal"]
+    kind: Literal["public", "authenticated", "permission", "scope", "internal", "ingest"]
     value: str | None = None
 
     def describe(self) -> str:
@@ -47,6 +51,7 @@ class Access:
             "permission": f"`{self.value}`",
             "scope": f"API key scope `{self.value}`",
             "internal": "internal proxy secret",
+            "ingest": "the integration's ingest token",
         }[self.kind]
 
 
@@ -146,6 +151,35 @@ def internal_only() -> Callable[[Request], None]:
             raise _unauthorized()
 
     return _mark(dep, Access("internal"))
+
+
+def ingest_token() -> Callable[[Request], Awaitable[TokenInfo]]:
+    """The bearer token must be a live ingest token of the integration in the path.
+
+    Ingest tokens are write-only for telemetry; the only thing they can read is
+    their own integration's agent config (which holds no secrets).
+    """
+
+    async def dep(request: Request) -> TokenInfo:
+        gate: IngestGate = request.app.state.ingest_gate
+        token = bearer_token(request.headers.get("Authorization"))
+        info = await gate.authenticate(token) if token else None
+        if info is None or str(info.integration_id) != request.path_params.get("integration_id"):
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Authentication required.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        retry = gate.limiter.hit(info.token_id, info.rate_limit_per_min)
+        if retry is not None:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Rate limit exceeded.",
+                headers={"Retry-After": str(retry)},
+            )
+        return info
+
+    return _mark(dep, Access("ingest"))
 
 
 def actor_for(request: Request, principal: SessionPrincipal | KeyPrincipal | None) -> Actor:

@@ -1,0 +1,14 @@
+# Build context for backend/Containerfile is the repository root (the API image
+# also carries agent/, which it serves to installers). Send only what it needs.
+*
+!backend
+!agent
+backend/.venv
+**/__pycache__
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+backend/.coverage
+backend/htmlcov
+backend/tests
+**/.env

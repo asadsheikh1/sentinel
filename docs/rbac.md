@@ -29,6 +29,7 @@ Machine keys (`X-Sentinel-Key`) carry scopes, never user permissions.
 
 | Method | Path | Requires | Allowed |
 |---|---|---|---|
+| GET | `/agent/{name}` | public | everyone |
 | GET | `/api/v1/api-keys` | `apikeys:manage` | admin |
 | POST | `/api/v1/api-keys` | `apikeys:manage` | admin |
 | DELETE | `/api/v1/api-keys/{key_id}` | `apikeys:manage` | admin |
@@ -46,6 +47,8 @@ Machine keys (`X-Sentinel-Key`) carry scopes, never user permissions.
 | DELETE | `/api/v1/integrations/{integration_id}` | `integrations:manage` | admin |
 | GET | `/api/v1/integrations/{integration_id}` | `integrations:manage` | admin |
 | PATCH | `/api/v1/integrations/{integration_id}` | `integrations:manage` | admin |
+| GET | `/api/v1/integrations/{integration_id}/agent-config` | the integration's ingest token | SENTINEL Agent (ingest token) |
+| GET | `/api/v1/integrations/{integration_id}/setup` | `integrations:manage` | admin |
 | GET | `/api/v1/integrations/{integration_id}/status` | `incidents:read` | viewer, responder, approver, admin |
 | POST | `/api/v1/integrations/{integration_id}/tokens/revoke` | `integrations:manage` | admin |
 | POST | `/api/v1/integrations/{integration_id}/tokens/rotate` | `integrations:manage` | admin |
