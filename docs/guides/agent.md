@@ -163,6 +163,7 @@ watched) on a 4-CPU arm64 VM:
 | Agent, host mode (Ubuntu 24.04) | 0.5–0.7% | 57 MB | 252 MB |
 | Agent, host mode (Amazon Linux 2023) | 0.8% | 57 MB | 250 MB |
 | Agent, container mode (Fedora CoreOS) | 1.1% | 76 MB peak | 241 MB |
+| Agent, fresh Ubuntu 24.04 VM (2-CPU amd64, CI) | 0.6% | 74 MB | 251 MB |
 | GET-only proxy | < 0.1% | 11–17 MB | — |
 
 The resident figure is mostly the 380 MB contrib binary, mapped from disk. That

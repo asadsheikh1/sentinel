@@ -1,7 +1,7 @@
 # Step 8 report — SENTINEL Agent: Linux hosts and container hosts
 
-**Status:** 🟡 built and tested locally; CI results pending (filled in below once the PR has run).
-**PR:** (link added after opening)
+**Status:** ✅ done. All acceptance criteria met locally and in CI (10 of 10 checks pass, including installing on a fresh Ubuntu 24.04 VM and in Ubuntu 24.04 and Amazon Linux 2023 systemd machines). One roadmap test, the Lima VM, was replaced (see below).
+**PR:** [PR #8](https://github.com/asadsheikh1/sentinel/pull/8) (not merged; merging is your decision)
 **Date:** 2026-11-21
 
 ## What was built
@@ -36,10 +36,10 @@
 
 | Criterion | Result |
 |---|---|
-| On a fresh Ubuntu VM the installer brings the integration to `healthy` within 2 min | ✅ locally in an Ubuntu 24.04 systemd machine: **healthy 23–25 s** after starting the installer. ⏳ the runner-VM install in CI (below) |
-| Host metrics queryable and attributed | ✅ CPU, memory, disk and network, labelled with the host and the integration. Filesystems: ✅ in container mode via `/hostfs`; in a test container the scraper skips them (see limitations); ⏳ on the CI VM |
+| On a fresh Ubuntu VM the installer brings the integration to `healthy` within 2 min | ✅ **40 s** on GitHub's fresh Ubuntu 24.04 VM (the installer took 38 s, downloads and verification included). Ubuntu 24.04 systemd machine: 25 s, both locally and in CI. Amazon Linux 2023: 33 s in CI |
+| Host metrics queryable and attributed | ✅ CPU, memory, disk, network and filesystems, labelled with the host and the integration (filesystems checked on the CI VM and in container mode via `/hostfs`) |
 | Journal queryable | ✅ the verification marker arrives through journald → gateway → Loki |
-| Container metrics and logs queryable and attributed | ✅ metrics for all 17 containers (AVIRO + SENTINEL), labelled with the container and the host. Logs: ✅ AVIRO's container logs in container mode, attributed to each container (`service_name=aviro_postgres_1`, …). ⏳ host mode in CI |
+| Container metrics and logs queryable and attributed | ✅ metrics for all 17 containers (AVIRO + SENTINEL), labelled with the container and the host. Logs: ✅ attributed to each container, both in host mode (CI VM, a rootful Podman container) and in container mode (AVIRO's `service_name=aviro_postgres_1`, …) |
 | Footprint numbers published | ✅ below and in the guide |
 
 ### Roadmap test list
@@ -47,22 +47,26 @@
 | Test | Result |
 |---|---|
 | Config rendering unit tests | ✅ 51 tests: structure, options, loopback-only listeners, hash, injection attempts, a Hypothesis property over 150 generated paths and process names, filesystem exclusions, broken-template detection |
-| `otelcol validate` on every rendered config | ✅ 12 of 12 configs locally (2 kinds × 2 modes × 3 option sets). A deliberately broken OTTL statement is rejected, so the check is real. ⏳ CI |
-| Install test in a disposable Ubuntu 24.04 systemd container | ✅ 14 passed, 1 skipped (container logs can't be seen from inside the test container; covered by container mode) |
-| Install test in a Lima VM | ❌ not done. Lima isn't installed; I said I'd only add it with your OK. Replaced by installing directly on GitHub's fresh Ubuntu 24.04 VM in CI (⏳) |
+| `otelcol validate` on every rendered config | ✅ 12 of 12 configs (2 kinds × 2 modes × 3 option sets), locally and in CI. A deliberately broken OTTL statement is rejected, so the check is real |
+| Install test in a disposable Ubuntu 24.04 systemd container | ✅ 15 passed, 1 skipped (container logs can't be seen from inside the test container; covered by the VM test and container mode), locally and in CI |
+| Install test in a Lima VM | ❌ not done. Lima isn't installed; I said I'd only add it with your OK. Replaced by installing directly on GitHub's fresh Ubuntu 24.04 VM in CI: ✅ 16 of 16 |
 | Verification marker received end to end | ✅ |
 | Uninstall leaves no residue | ✅ host mode: no files, units, user, group, processes, or HAProxy package. Container mode: no containers, volumes, images, files or user |
 | Footprint under AVIRO load | ✅ below |
 | Socket proxy denies POST | ✅ POST, PUT and DELETE (also to allowed paths), `logs`, streaming `stats`, `/info`, `/images`, `/secrets` and path tricks all get 403. The agent user can't connect to the raw socket |
-| Amazon Linux 2023 | ✅ 13 passed, 1 skipped, 1 failed locally: the 2-minute check. The install took 141 s because `dnf` was slow over this network; the agent was healthy 6 s after it started. ⏳ CI |
+| Amazon Linux 2023 | ✅ 15 passed, 1 skipped in CI; healthy in 33 s. (The first runs took 142 s; that was bug 10 below, not the network) |
 
-### Footprint (AVIRO under load: 20 synthetic shoppers, 17 containers watched, 4-CPU arm64)
+### Footprint
+
+Local measurements were taken with AVIRO under load (20 synthetic shoppers, 17 containers watched) on a 4-CPU arm64 VM. CI runs on 2-CPU amd64 runners.
 
 | | CPU (one core, 60 s) | Private memory (RssAnon) | Resident (VmRSS) |
 |---|---|---|---|
-| Agent, host mode, Ubuntu 24.04 | 0.47–0.73% | 57 MB | 252 MB |
-| Agent, host mode, Amazon Linux 2023 | 0.83% | 57 MB | 250 MB |
-| Agent, container mode, Fedora CoreOS (Podman VM) | 1.08% | 76 MB peak | 241 MB |
+| Agent, host mode, Ubuntu 24.04, local under AVIRO load | 0.47–0.73% | 57 MB | 252 MB |
+| Agent, host mode, Amazon Linux 2023, local | 0.83% | 57 MB | 250 MB |
+| Agent, container mode, Fedora CoreOS (Podman VM), under AVIRO load | 1.08% | 76 MB peak | 241 MB |
+| Agent, fresh Ubuntu 24.04 VM (CI, amd64) | 0.55% | 74 MB | 251 MB |
+| Agent, Ubuntu 24.04 / Amazon Linux 2023 machines (CI, amd64) | 0.45% / 0.30% | 58 / 57 MB | 265 / 266 MB |
 | GET-only proxy (HAProxy) | < 0.1% | 11–17 MB | — |
 
 The design estimate was "50–150 MB RAM, < 2% CPU". Private memory and CPU are
@@ -76,12 +80,14 @@ build would shrink it.
 |---|---|
 | Backend unit + database + integration (`make test-all`) | 297 passed, coverage 94.4% |
 | Live gateway (`make test-gateway`) | 16 passed (one new: only the agent files and the token's own config are exposed on `:4319`) |
-| Agent end to end (`make test-agent`), Ubuntu 24.04, under AVIRO load | 14 passed, 1 skipped |
-| Agent end to end, Amazon Linux 2023 | 13 passed, 1 skipped, 1 failed (slow local `dnf`, above) |
+| Agent end to end (`make test-agent`), Ubuntu 24.04, under AVIRO load | 15 passed, 1 skipped |
+| CI (PR #8) | 10 of 10 checks pass |
 | Container mode in the Podman VM | install, data, uninstall checked by hand (commands below) |
 
 ### Checking that the tests can actually fail
 I removed the proxy's "GET/HEAD only" rule. **The proxy test still passed.** Every write it tried also hit a path outside the allowlist, so the second rule blocked it anyway. I added writes to *allowed* paths (`POST /containers/json`, `DELETE /_ping`, `PUT /containers/x/json`). With the rule removed, the test then failed on `POST /v1.41/containers/json`. With the rule restored, it passes.
+
+I also removed the proxy's `/events` routing (bug 11). The new idle-stream test then failed with 2 event-stream errors, and passed again with it restored.
 
 `otelcol validate` rejected a deliberately broken OTTL statement, and the unit tests catch a template that references an undefined processor or adds an exporter.
 
@@ -103,6 +109,12 @@ I removed the proxy's "GET/HEAD only" rule. **The proxy test still passed.** Eve
 8. **Uninstall left about 500 MB of images** in container mode: the pulled base images and Podman build-cache layers. The installer now records which images it pulled, builds without cached layers, and the uninstaller removes exactly those.
 9. **The test helper printed the ingest token** in a failure message (dataclass repr). The token and the installer output are now hidden from reprs.
 
+Found by CI:
+
+10. **The agent's start stalled for 2 minutes on Amazon Linux 2023.** The unit wanted `network-online.target`, and `systemd-networkd-wait-online` ran into its timeout. The new per-step timings in the installer showed where the time went. The unit now orders after `network.target`: the exporter queues and retries anyway. Healthy went from 142 s to 33 s.
+11. **The proxy cut the container event stream every 30 s.** A streamed response isn't a "tunnel", so `timeout tunnel` didn't apply. `/events` now has its own backend with a 1-hour timeout, and a regression test checks that the agent journal shows no event-stream errors after more than a minute.
+12. **A race in the existing create-integration endpoint** (from Step 6). The gate's "unknown token" cache was cleared *before* the new token was committed. A client using the token at once could be rejected, and that rejection cached for 5 s. The endpoint now commits first.
+
 ## Decisions worth reviewing
 
 1. **API image build context is now the repository root**, so the image can carry `agent/`. A root `.containerignore` sends only `backend/` and `agent/`. Updated: `compose.yaml`, `Makefile`, `ci-backend.yml`. The dev compose also mounts `agent/` read-only into the API container, so installer edits need no rebuild.
@@ -115,7 +127,7 @@ I removed the proxy's "GET/HEAD only" rule. **The proxy test still passed.** Eve
 
 ## Known limitations
 
-- **Lima VM test not run** (above). CI's fresh Ubuntu VM covers the "fresh VM" criterion instead.
+- **Lima VM test not run** (above). CI's fresh Ubuntu VM covers the "fresh VM" criterion instead. Amazon Linux 2023 is tested in a systemd container, not on an EC2 instance (that comes with the AWS steps).
 - **In a test container, filesystem metrics are skipped.** The scraper reports physical filesystems only, and skips a disk whose device node isn't present. Every disk inside a rootless container is like that. On VMs, and in container mode via `/hostfs`, they're reported.
 - **Docker's default `json-file` container logs are not collected.** Container logs come from journald, which is the Podman default on systemd hosts and an option for Docker (`log-driver: journald`). Container *stats* work with both engines.
 - **The installer needs GitHub** (Collector and cosign downloads) and Docker Hub (container mode). `--package-file` and `--cosign-file` support pre-downloaded copies, which are still verified.
