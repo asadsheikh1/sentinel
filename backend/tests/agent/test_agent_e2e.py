@@ -280,14 +280,15 @@ def test_install_verifies_the_download_and_reaches_healthy_within_2_minutes(
 
 def test_agent_runs_unprivileged_and_listens_only_on_loopback(installed: Installed) -> None:
     m = installed.machine
-    assert m.sh("ps -o user= -C otelcol-contrib").split() == ["sentinel-agent"]
+    pid = _agent_pid(m)
+    assert m.sh(f"ps -o user= -p {pid}").split() == ["sentinel-agent"]
     assert m.sh("id -nG sentinel-agent").split() == [
         "sentinel-agent"
     ]  # journal access via the unit
-    status = m.sh("grep -E '^(CapEff|NoNewPrivs)' /proc/$(pgrep -o otelcol-contrib)/status")
+    status = m.sh(f"grep -E '^(CapEff|NoNewPrivs)' /proc/{pid}/status")
     assert re.search(r"CapEff:\s+0+\n", status), status
     assert re.search(r"NoNewPrivs:\s+1", status), status
-    listeners = m.sh("ss -Hltnup | grep otelcol || true").strip().splitlines()
+    listeners = m.sh(f"ss -Hltnup | grep 'pid={pid},' || true").strip().splitlines()
     assert listeners, "expected the loopback OTLP and self-metrics listeners"
     for line in listeners:
         local = line.split()[4]
@@ -399,6 +400,13 @@ def test_host_and_container_entities_are_discovered(installed: Installed, admin:
 # ------------------------------------------------------------------ socket proxy
 
 
+def _agent_pid(m: Machine) -> str:
+    """The agent's PID from systemd: a VM may run other Collectors (SENTINEL's gateway)."""
+    pid = m.sh("systemctl show -p MainPID --value sentinel-agent").strip()
+    assert pid not in {"", "0"}, "sentinel-agent is not running"
+    return pid
+
+
 def _proxy(m: Machine, method: str, path: str) -> str:
     return m.sh(
         "runuser -u sentinel-agent -- curl -s -o /dev/null -w '%{http_code}' "
@@ -448,7 +456,7 @@ def test_footprint(installed: Installed) -> None:
     """RSS and CPU of the agent over 60 s (published in docs/progress/step-08.md)."""
     m = installed.machine
     script = r"""
-pid=$(pgrep -o otelcol-contrib); hz=$(getconf CLK_TCK)
+pid=$(systemctl show -p MainPID --value sentinel-agent); hz=$(getconf CLK_TCK)
 t0=$(awk '{print $14+$15}' /proc/$pid/stat); s0=$(date +%s.%N); peak=0
 for i in $(seq 1 12); do
   r=$(awk '/VmRSS/{print $2}' /proc/$pid/status); [ "$r" -gt "$peak" ] && peak=$r; sleep 5
@@ -457,7 +465,8 @@ t1=$(awk '{print $14+$15}' /proc/$pid/stat); s1=$(date +%s.%N)
 rss=$(awk '/VmRSS/{print $2}' /proc/$pid/status)
 anon=$(awk '/RssAnon/{print $2}' /proc/$pid/status)
 file=$(awk '/RssFile/{print $2}' /proc/$pid/status)
-hp=$(pgrep -o haproxy || true)
+hp=$(systemctl show -p MainPID --value sentinel-agent-socket-proxy || true)
+[ "$hp" = 0 ] && hp=""
 proxy=$([ -n "$hp" ] && awk '/VmRSS/{print $2}' /proc/$hp/status || echo 0)
 cpu=$(awk -v a="$t0" -v b="$t1" -v hz="$hz" -v s0="$s0" -v s1="$s1" \
   'BEGIN{printf "%.2f", (b-a)/hz/(s1-s0)*100}')
@@ -474,6 +483,15 @@ echo "{\"rss_kib\": $rss, \"rss_anon_kib\": $anon, \"rss_file_kib\": $file,"\
         Path(FOOTPRINT_OUT).write_text(json.dumps(result, indent=2))
     assert result["peak_rss_kib"] < 400 * 1024  # the unit's MemoryMax
     assert result["cpu_percent"] < 50  # the unit's CPUQuota
+
+
+def test_container_event_stream_survives_idle_periods(installed: Installed) -> None:
+    """Runs after the 60 s footprint test: /events must not be cut while idle."""
+    errors = installed.machine.sh(
+        "journalctl -u sentinel-agent --no-pager -o cat | "
+        "grep -c 'Error watching docker container events' || true"
+    ).strip()
+    assert errors == "0", f"{errors} event-stream errors in the agent journal"
 
 
 # ------------------------------------------------------------------ re-run, uninstall
@@ -521,10 +539,12 @@ def test_uninstall_leaves_no_residue(installed: Installed, http: httpx.Client) -
         "ls -d /etc/sentinel-agent /opt/sentinel-agent /var/lib/sentinel-agent "
         "/run/sentinel-agent-proxy /etc/systemd/system/sentinel-agent*.service 2>/dev/null; "
         "getent passwd sentinel-agent; getent group sentinel-agent; "
-        "pgrep -a otelcol-contrib; pgrep -a haproxy; "
         "systemctl list-units --all --no-legend 'sentinel-agent*' ; true"
     ).strip()
     assert leftovers == "", leftovers
+    # Separate call, and [/] in the pattern, so pgrep can't match its own shell.
+    processes = m.sh("pgrep -af '[/]opt/sentinel-agent|[/]etc/sentinel-agent' || true").strip()
+    assert processes == "", processes
     if m.ok("command -v dpkg"):
         assert not m.ok("dpkg -s haproxy >/dev/null 2>&1")  # it was installed by us
     else:

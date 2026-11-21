@@ -363,8 +363,10 @@ start_host() {
 [Unit]
 Description=SENTINEL Agent (OpenTelemetry Collector ${OTELCOL_VERSION})
 Documentation=https://opentelemetry.io/docs/collector/
-After=network-online.target $wants
-Wants=network-online.target $wants
+# network.target, not network-online.target: the exporter queues and retries, so
+# the agent needn't wait (wait-online can stall boot for minutes on some hosts).
+After=network.target $wants
+Wants=$wants
 
 [Service]
 User=$AGENT_USER
