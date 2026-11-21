@@ -1,6 +1,6 @@
 # Step 9 report — External health checks (prober)
 
-**Status:** 🟡 built and tested locally; CI results pending (filled in once the PR has run).
+**Status:** ✅ done. All acceptance criteria met locally and in CI (10 of 10 checks pass; the live prober tests ran in CI's ingestion gateway job: 19 of 19).
 **PR:** [PR #9](https://github.com/asadsheikh1/sentinel/pull/9) (not merged; merging is your decision)
 **Date:** 2026-11-22
 
@@ -58,6 +58,7 @@
 |---|---|
 | Backend unit + database + integration (`make test-all`) | 492 passed, coverage 93.4% |
 | Live gateway + prober (`make test-gateway`) | 19 passed |
+| CI (PR #9) | 10 of 10 checks pass, including the 3 live prober tests on rootless Podman |
 
 ### Checking that the tests can actually fail
 I broke the guard five ways:
