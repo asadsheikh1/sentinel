@@ -1,7 +1,7 @@
 # Step 9 report — External health checks (prober)
 
 **Status:** 🟡 built and tested locally; CI results pending (filled in once the PR has run).
-**PR:** (link added after opening)
+**PR:** [PR #9](https://github.com/asadsheikh1/sentinel/pull/9) (not merged; merging is your decision)
 **Date:** 2026-11-22
 
 ## What was built
