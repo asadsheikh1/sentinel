@@ -7,10 +7,10 @@ they are never printed in logs or reprs.
 
 from enum import StrEnum
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Environment(StrEnum):
@@ -89,10 +89,31 @@ class Settings(BaseSettings):
         default="http://127.0.0.1:4319", pattern=r"^https?://[A-Za-z0-9.:\[\]-]+(:[0-9]+)?$"
     )
     agent_dir: str | None = None
+
+    # External health checks. The API provisions the prober's ingest token into
+    # `prober_token_file` (a volume only the prober reads). The prober reaches
+    # SENTINEL only through the ingest endpoint.
+    prober_token_file: str | None = None
+    prober_endpoint: str = "http://ingest.sentinel.internal:4319"
+    prober_concurrency: int = Field(default=10, ge=1, le=50)
+    prober_config_refresh_s: float = Field(default=30.0, gt=0)
+    # Development only: exact host names the guard lets through although they
+    # resolve to private addresses (the demo shop on this machine). Refused in prod.
+    prober_allow_hosts: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    health_check_min_interval_s: int = Field(default=30, ge=5)
+    health_check_max: int = Field(default=50, ge=1, le=1000)
+    probe_state_interval_s: float = Field(default=15.0, gt=0)
     loki_url: str = "http://127.0.0.1:3100"
     jaeger_url: str = "http://127.0.0.1:16686"
     telemetry_timeout_s: float = Field(default=10.0, gt=0, le=60)
     telemetry_max_response_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
+
+    @field_validator("prober_allow_hosts", mode="before")
+    @classmethod
+    def _comma_separated(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [h.strip().lower() for h in value.split(",") if h.strip()]
+        return value
 
     @model_validator(mode="after")
     def _prod_requires_real_secret(self) -> "Settings":
@@ -105,6 +126,10 @@ class Settings(BaseSettings):
                 raise ValueError("SENTINEL_INTERNAL_AUTH_SECRET must be >= 32 random chars in prod")
             if not self.cookie_secure:
                 raise ValueError("SENTINEL_COOKIE_SECURE must be true in prod")
+            if self.prober_allow_hosts:
+                raise ValueError("SENTINEL_PROBER_ALLOW_HOSTS is for development only")
+            if self.health_check_min_interval_s < 30:
+                raise ValueError("SENTINEL_HEALTH_CHECK_MIN_INTERVAL_S must be >= 30 in prod")
         return self
 
     @property

@@ -6,7 +6,7 @@
 # On AWS these services get no published ports at all (only the gateway
 # Collector and SENTINEL talk to them over the internal network).
 #
-# Memory limits: 768 + 640 + 512 + 128 + 256 + 64 = 2368 MiB (budget: 2.5 GB).
+# Memory limits: 768 + 640 + 512 + 128 + 256 + 64 + 128 (prober) = 2496 MiB (budget: 2.5 GB).
 
 services:
   prometheus:
@@ -89,6 +89,28 @@ services:
     restart: unless-stopped
     networks: [telemetry] # no published port: only Caddy can reach it
 
+  # External health checks. Its own network has internet egress and Caddy, nothing
+  # else; every target also passes the SSRF guard (ADR-0015). In this dev setup
+  # it also joins sentinel-ingest, so it can check the demo shop on this machine
+  # (allowlisted by exact name below; prod refuses an allowlist).
+  prober:
+    image: localhost/sentinel-api:dev
+    command: ["sentinel", "prober", "run"]
+    environment:
+      SENTINEL_PROBER_TOKEN_FILE: /run/sentinel-prober/token
+      SENTINEL_PROBER_ENDPOINT: http://ingest.sentinel.internal:4319
+      SENTINEL_PROBER_ALLOW_HOSTS: ${SENTINEL_PROBER_ALLOW_HOSTS:-aviro_gateway_1,sentinel-probe-target}
+      SENTINEL_PROBER_CONFIG_REFRESH_S: ${SENTINEL_PROBER_CONFIG_REFRESH_S:-30}
+    volumes:
+      - prober-token:/run/sentinel-prober:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges]
+    mem_limit: 128m
+    depends_on: [caddy]
+    restart: unless-stopped
+    networks: [probe, ingest]
+
   # The only way in: checks the ingest token, then proxies to the gateway.
   caddy:
     image: docker.io/library/caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
@@ -105,6 +127,8 @@ services:
       telemetry: {}
       ingest:
         aliases: [ingest.sentinel.internal]
+      probe:
+        aliases: [ingest.sentinel.internal]
 
   # Adds the settings the API needs once the gateway and stores are running.
   api:
@@ -116,9 +140,15 @@ services:
       SENTINEL_INTEGRATION_FLUSH_INTERVAL_S: ${SENTINEL_INTEGRATION_FLUSH_INTERVAL_S:-30}
       SENTINEL_INTEGRATION_STALE_AFTER_S: ${SENTINEL_INTEGRATION_STALE_AFTER_S:-270}
       SENTINEL_ENTITY_DISCOVERY_INTERVAL_S: ${SENTINEL_ENTITY_DISCOVERY_INTERVAL_S:-60}
+      SENTINEL_PROBER_TOKEN_FILE: /run/sentinel-prober/token
+      SENTINEL_PROBER_ALLOW_HOSTS: ${SENTINEL_PROBER_ALLOW_HOSTS:-aviro_gateway_1,sentinel-probe-target}
+      SENTINEL_HEALTH_CHECK_MIN_INTERVAL_S: ${SENTINEL_HEALTH_CHECK_MIN_INTERVAL_S:-30}
+      SENTINEL_PROBE_STATE_INTERVAL_S: ${SENTINEL_PROBE_STATE_INTERVAL_S:-15}
     # Development: serve agent/ from the checkout, so installer edits need no rebuild.
     volumes:
       - ../../agent:/app/agent:ro,Z
+      # The API writes the prober's token here; only the prober mounts it (read-only).
+      - prober-token:/run/sentinel-prober:U
     networks: [default, telemetry]
 
 networks:
@@ -127,9 +157,13 @@ networks:
   # Monitored apps on this machine (AVIRO) join this network to reach Caddy, and nothing else.
   ingest:
     name: sentinel-ingest
+  # The prober's own network: internet egress plus Caddy.
+  probe:
+    name: sentinel-probe
 
 volumes:
   promdata:
   amdata:
   lokidata:
   jaegerdata:
+  prober-token:

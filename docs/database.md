@@ -70,6 +70,49 @@
 
 **Indexes:** `ix_entity_relations_to_entity_id` (entity_relations.to_entity_id)
 
+## `events`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `type` | event_type | no |  |  |
+| `source_integration_id` | UUID | yes |  | → `integrations.id` ON DELETE SET NULL |
+| `entity_ids` | UUID[] | no | `'{}'::uuid[]` |  |
+| `occurred_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `received_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `severity` | TEXT | yes |  |  |
+| `dedupe_key` | TEXT | no |  | unique |
+| `payload` | JSONB | no | `'{}'::jsonb` |  |
+| `id` | UUID | no | app: `uuid7()` | PK |
+
+**Checks:** `severity IS NULL OR severity IN ('info','warning','critical')`
+
+**Indexes:** `ix_events_occurred_at` (events.occurred_at); `ix_events_type_occurred_at` (events.type, events.occurred_at)
+
+## `health_checks`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `integration_id` | UUID | no |  | → `integrations.id` ON DELETE CASCADE |
+| `name` | TEXT | no |  |  |
+| `kind` | check_kind | no |  |  |
+| `target` | TEXT | no |  |  |
+| `interval_s` | INTEGER | no |  |  |
+| `timeout_s` | FLOAT | no |  |  |
+| `assertions` | JSONB | no | `'{}'::jsonb` |  |
+| `enabled` | BOOLEAN | no | `true` |  |
+| `entity_id` | UUID | yes |  | → `entities.id` ON DELETE SET NULL |
+| `state` | probe_state | no | `unknown` |  |
+| `state_changed_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `last_result_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `created_by` | UUID | yes |  | → `users.id` ON DELETE SET NULL |
+| `id` | UUID | no | app: `uuid7()` | PK |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Checks:** `interval_s BETWEEN 5 AND 86400`; `char_length(name) BETWEEN 1 AND 100`; `char_length(target) BETWEEN 1 AND 2048`; `timeout_s > 0 AND timeout_s < interval_s`
+
+**Indexes:** `ix_health_checks_integration_id` (health_checks.integration_id)
+
 ## `ingest_tokens`
 
 | Column | Type | Null | Default | Key / reference |

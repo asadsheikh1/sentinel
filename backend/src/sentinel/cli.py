@@ -112,6 +112,16 @@ def _run_telemetry(args: argparse.Namespace) -> int:
     return telemetry_cli.run(args, get_settings())
 
 
+def _run_prober(args: argparse.Namespace) -> int:
+    from sentinel.config import get_settings
+    from sentinel.log import configure_logging
+    from sentinel.prober.run import main
+
+    settings = get_settings()
+    configure_logging(settings)
+    return main(settings)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sentinel", description="SENTINEL AI SRE")
     parser.add_argument("--version", action="version", version=f"sentinel {__version__}")
@@ -144,6 +154,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--password-stdin", action="store_true", help="read the password from stdin (scripts)"
     )
     admin.set_defaults(func=_run_create_admin)
+
+    prober = sub.add_parser("prober", help="the external health-check prober")
+    prober_sub = prober.add_subparsers(dest="prober_command", required=True)
+    prober_sub.add_parser("run", help="run checks until stopped (in the prober container)")
+    prober.set_defaults(func=_run_prober)
 
     rbac = sub.add_parser("rbac-docs", help="generate docs/rbac.md from the code")
     rbac.add_argument("--output", default="../docs/rbac.md")

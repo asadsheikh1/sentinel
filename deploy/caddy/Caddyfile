@@ -51,5 +51,15 @@
 		reverse_proxy api:8000
 	}
 
+	# The prober's work list (prober token, checked by the API).
+	@prober_checks {
+		method GET
+		path /api/v1/prober/checks
+	}
+	route @prober_checks {
+		request_header -X-Sentinel-Internal-Auth
+		reverse_proxy api:8000
+	}
+
 	respond 404
 }

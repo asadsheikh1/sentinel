@@ -97,6 +97,11 @@ class Admin:
         assert r.status_code == 201, r.text
         return r.json()["integration"]["id"], r.json()["ingest_token"]
 
+    def get(self, path: str) -> Any:
+        r = self.client.get(path)
+        r.raise_for_status()
+        return r.json()
+
     def status(self, iid: str) -> dict[str, Any]:
         return self.client.get(f"/api/v1/integrations/{iid}/status").json()  # type: ignore[no-any-return]
 

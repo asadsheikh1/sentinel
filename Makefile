@@ -88,7 +88,9 @@ stack-up: ## Start everything: Postgres, API, telemetry stores, gateway (ingest 
 stack-up-fast: ## Same, with short health intervals (used by test-gateway)
 	$(COMPOSE_OBS) build
 	SENTINEL_INTEGRATION_FLUSH_INTERVAL_S=1 SENTINEL_INTEGRATION_STALE_AFTER_S=8 \
-	SENTINEL_ENTITY_DISCOVERY_INTERVAL_S=3 $(COMPOSE_OBS) up -d --force-recreate
+	SENTINEL_ENTITY_DISCOVERY_INTERVAL_S=3 SENTINEL_HEALTH_CHECK_MIN_INTERVAL_S=5 \
+	SENTINEL_PROBE_STATE_INTERVAL_S=2 SENTINEL_PROBER_CONFIG_REFRESH_S=3 \
+	$(COMPOSE_OBS) up -d --force-recreate
 	$(WAIT_MIGRATE)
 
 stack-down: ## Stop everything (data kept)

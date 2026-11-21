@@ -150,6 +150,14 @@ class IngestGate:
             self._counts[(info.integration_id, signal)] += 1
             self._token_used[info.token_id] = now
 
+    def mark_seen(self, integration_id: uuid.UUID, signal: str, at: datetime) -> None:
+        """Data for an integration that arrived another way (e.g. probe results
+        sent by the prober on behalf of a check's integration)."""
+        with self._lock:
+            previous = self._seen.get((integration_id, signal))
+            if previous is None or at > previous:
+                self._seen[(integration_id, signal)] = at
+
     def invalidate(self, integration_id: uuid.UUID) -> None:
         """Forget cached tokens of an integration (after revoke, rotate or disable)."""
         for key, (_, info) in list(self._cache.items()):

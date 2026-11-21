@@ -32,6 +32,8 @@ def test_all_tables_registered() -> None:
         "user_invites",
         "integrations",
         "ingest_tokens",
+        "health_checks",
+        "events",
         "integration_signal_status",
         "entities",
         "entity_relations",
