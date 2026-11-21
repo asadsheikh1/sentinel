@@ -2,14 +2,16 @@
 
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import or_, select
 
 from sentinel.api.deps import DbSession
-from sentinel.api.security import actor_for, require
+from sentinel.api.security import actor_for, ingest_token, require
 from sentinel.auth.permissions import Permission
 from sentinel.auth.service import ConflictError, SessionPrincipal
 from sentinel.db.models import (
@@ -20,6 +22,9 @@ from sentinel.db.models import (
     IntegrationKind,
     IntegrationStatus,
 )
+from sentinel.integrations import agent_config
+from sentinel.integrations.agent_config import AgentConfigError, AgentMode
+from sentinel.integrations.gate import TokenInfo
 from sentinel.integrations.service import IntegrationService
 
 router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
@@ -28,6 +33,7 @@ entities_router = APIRouter(prefix="/api/v1/entities", tags=["entities"])
 Manager = Annotated[SessionPrincipal, Depends(require(Permission.INTEGRATIONS_MANAGE))]
 Viewer = Annotated[SessionPrincipal, Depends(require(Permission.INCIDENTS_READ))]
 Signal = Literal["metrics", "logs", "traces", "events"]
+Agent = Annotated[TokenInfo, Depends(ingest_token())]
 
 
 class IntegrationCreate(BaseModel):
@@ -108,11 +114,36 @@ class RelationOut(BaseModel):
     last_seen: datetime
 
 
+class AgentSetupOut(BaseModel):
+    integration_id: uuid.UUID
+    kind: IntegrationKind
+    endpoint: str
+    agent_version: str
+    config_hash: str
+    install_command: str = Field(description="Linux host (systemd). Asks for the ingest token.")
+    container_command: str = Field(description="Podman (or Docker) agent container.")
+    uninstall_command: str
+    notes: list[str]
+
+
 def _service(request: Request, db: DbSession) -> IntegrationService:
     return IntegrationService(db, request.app.state.settings)
 
 
 Service = Annotated[IntegrationService, Depends(_service)]
+
+
+def _check_agent_options(kind: IntegrationKind, config: dict[str, Any]) -> None:
+    """Agent options are validated before they are stored, not only when rendered."""
+    try:
+        agent_config.validate_options(kind, config)
+    except ValidationError as e:
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in e.errors()
+        )
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Invalid agent options: {problems}"
+        ) from e
 
 
 async def _get(svc: IntegrationService, integration_id: uuid.UUID) -> Integration:
@@ -137,6 +168,7 @@ async def list_integrations(svc: Service, _: Viewer) -> list[IntegrationOut]:
 async def create_integration(
     body: IntegrationCreate, request: Request, svc: Service, admin: Manager
 ) -> IntegrationCreated:
+    _check_agent_options(body.kind, body.config)
     try:
         integration, token = await svc.create(
             name=body.name,
@@ -170,6 +202,8 @@ async def update_integration(
     admin: Manager,
 ) -> IntegrationOut:
     integration = await _get(svc, integration_id)
+    if body.config is not None:
+        _check_agent_options(integration.kind, body.config)
     try:
         await svc.update(
             integration,
@@ -229,6 +263,87 @@ async def integration_status(integration_id: uuid.UUID, svc: Service, _: Viewer)
         status_reason=integration.status_reason,
         expected_signals=integration.expected_signals,
         signals=[SignalOut.model_validate(s) for s in signals],
+    )
+
+
+def _agent_dir(request: Request) -> Path:
+    configured = request.app.state.settings.agent_dir
+    return Path(configured) if configured else agent_config.default_agent_dir()
+
+
+@router.get(
+    "/{integration_id}/agent-config",
+    response_class=PlainTextResponse,
+    responses={200: {"content": {"application/yaml": {}}}},
+)
+async def agent_config_file(
+    integration_id: uuid.UUID,
+    request: Request,
+    svc: Service,
+    _: Agent,
+    mode: AgentMode = AgentMode.HOST,
+) -> PlainTextResponse:
+    """The rendered Collector config for this integration's agent (ingest token auth)."""
+    integration = await _get(svc, integration_id)
+    try:
+        rendered = agent_config.render(
+            kind=integration.kind,
+            environment=integration.environment,
+            config=integration.config,
+            mode=mode,
+            agent_dir=_agent_dir(request),
+        )
+    except AgentConfigError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
+    return PlainTextResponse(
+        rendered.text,
+        media_type="application/yaml",
+        headers={"X-Sentinel-Config-Hash": rendered.config_hash, "Cache-Control": "no-store"},
+    )
+
+
+@router.get("/{integration_id}/setup", response_model=AgentSetupOut)
+async def agent_setup(
+    integration_id: uuid.UUID, request: Request, svc: Service, _: Manager
+) -> AgentSetupOut:
+    """Install instructions for an agent integration. The token is never included."""
+    integration = await _get(svc, integration_id)
+    try:
+        rendered = agent_config.render(
+            kind=integration.kind,
+            environment=integration.environment,
+            config=integration.config,
+            agent_dir=_agent_dir(request),
+        )
+    except AgentConfigError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
+    endpoint = request.app.state.settings.agent_public_endpoint
+    containers = agent_config.collects_containers(integration.kind, rendered.options)
+    notes = [
+        "The installer asks for the ingest token (it is not stored in shell history).",
+        "Supported: Ubuntu 22.04/24.04, Debian 12/13, Amazon Linux 2023 (x86_64, arm64).",
+        "The agent only sends data. It opens no ports except loopback 4317/4318 for "
+        "local apps and 18888 for its own metrics.",
+    ]
+    if containers:
+        notes.append(
+            "Container stats go through a GET-only socket proxy (HAProxy). The installer "
+            f"uses the {rendered.options.container_engine} socket; pass --engine-socket "
+            "to use another one."
+        )
+    return AgentSetupOut(
+        integration_id=integration.id,
+        kind=integration.kind,
+        endpoint=endpoint,
+        agent_version=agent_config.AGENT_VERSION,
+        config_hash=rendered.config_hash,
+        install_command=agent_config.install_command(endpoint, integration.id),
+        container_command=agent_config.container_command(endpoint, integration.id),
+        uninstall_command=(
+            f"curl -fsSL {endpoint}/agent/uninstall.sh -o sentinel-agent-uninstall.sh && "
+            "sudo bash sentinel-agent-uninstall.sh"
+        ),
+        notes=notes,
     )
 
 

@@ -6,7 +6,7 @@ SENTINEL connects to your systems, detects incidents, and explains the likely ro
 - **Safe by design.** Code runs only in isolated rootless [Podman](https://podman.io) sandboxes. Nothing is merged or deployed automatically.
 - **Measured, not claimed.** AI quality is evaluated against fault-injection scenarios on the [AVIRO demo shop](https://github.com/asadsheikh1/aviro-shop).
 
-> **Status:** early development. Step 7 of 35 (safe telemetry query adapters and secret redaction). See the [roadmap](docs/4-plan/1-roadmap.md).
+> **Status:** early development. Step 8 of 35 (the SENTINEL Agent for Linux hosts and Podman/Docker container hosts). See the [roadmap](docs/4-plan/1-roadmap.md).
 
 ## Quickstart (macOS, Apple Silicon)
 

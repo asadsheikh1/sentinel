@@ -29,8 +29,8 @@ services:
   # One-shot: applies Alembic migrations as sentinel_migrator, then exits.
   migrate:
     build:
-      context: ../../backend
-      dockerfile: Containerfile
+      context: ../..
+      dockerfile: backend/Containerfile
     image: localhost/sentinel-api:dev
     command: ["sentinel", "db", "upgrade"]
     environment:

@@ -1,5 +1,6 @@
-# SENTINEL API image. Build with Podman:
-#   podman build -t sentinel-api -f backend/Containerfile backend
+# SENTINEL API image. Build with Podman from the repository root (the image also
+# carries agent/, the agent installer and config templates it serves):
+#   podman build -t sentinel-api -f backend/Containerfile .
 # Multi-arch (CI): podman build --platform linux/amd64,linux/arm64 --manifest sentinel-api ...
 
 FROM ghcr.io/astral-sh/uv:0.13.8 AS uv
@@ -12,18 +13,20 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /src
 # Dependencies first so they're cached separately from source changes.
-COPY pyproject.toml uv.lock .python-version ./
+COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 RUN uv sync --locked --no-dev --no-install-project
-COPY src ./src
+COPY backend/src ./src
 RUN uv sync --locked --no-dev --no-editable
 
 FROM docker.io/library/python:3.12-slim-trixie AS runtime
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin sentinel
 COPY --from=build /app/.venv /app/.venv
+COPY agent /app/agent
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    SENTINEL_API_HOST=0.0.0.0
+    SENTINEL_API_HOST=0.0.0.0 \
+    SENTINEL_AGENT_DIR=/app/agent
 USER 10001
 EXPOSE 8000
 CMD ["sentinel", "api"]

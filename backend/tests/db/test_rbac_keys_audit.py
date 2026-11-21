@@ -70,7 +70,7 @@ def test_route_role_matrix(settings: Settings) -> None:
             assert r.status_code == 401, f"anonymous {route.method} {route.path} → {r.status_code}"
 
             for role in ROLES:
-                if access.kind in ("scope", "internal"):
+                if access.kind in ("scope", "internal", "ingest"):
                     expected_denied = True  # user sessions never satisfy these
                 elif access.kind == "authenticated":
                     expected_denied = False

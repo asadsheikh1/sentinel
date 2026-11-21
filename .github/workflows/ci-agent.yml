@@ -1,0 +1,152 @@
+name: ci-agent
+
+on:
+  pull_request:
+    paths: &paths
+      - "agent/**"
+      - "backend/src/sentinel/integrations/**"
+      - "backend/src/sentinel/api/**"
+      - "backend/tests/agent/**"
+      - "deploy/**"
+      - ".github/workflows/ci-agent.yml"
+  push:
+    branches: [main]
+    paths: *paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  configs:
+    name: render + validate every agent config, lint the installer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.8"
+          enable-cache: true
+      - run: cd backend && uv sync --locked
+      - name: Render the config matrix (kind x mode x options)
+        run: cd backend && uv run python tests/agent/render_matrix.py "$RUNNER_TEMP/configs"
+      - name: otelcol-contrib validate on every rendered config
+        run: |
+          image="$(grep -o 'docker.io/otel/opentelemetry-collector-contrib:[^ ]*' deploy/compose/compose.observability.yaml)"
+          mkdir -p "$RUNNER_TEMP/state" "$RUNNER_TEMP/hostfs"
+          failed=0
+          for f in "$RUNNER_TEMP"/configs/*.yaml; do
+            if podman run --rm -e SENTINEL_INGEST_ENDPOINT=http://127.0.0.1:4319 -e SENTINEL_INGEST_TOKEN=x \
+                -v "$f:/c.yaml:ro" -v "$RUNNER_TEMP/state:/var/lib/sentinel-agent" \
+                -v "$RUNNER_TEMP/hostfs:/hostfs:ro" "$image" validate --config=/c.yaml; then
+              echo "ok   $(basename "$f")"
+            else
+              echo "::error::$(basename "$f") failed validation"; failed=1
+            fi
+          done
+          exit $failed
+      - name: shellcheck install.sh and uninstall.sh
+        run: |
+          podman run --rm -v ./agent:/a:ro docker.io/koalaman/shellcheck:v0.11.0 /a/install.sh /a/uninstall.sh
+      - name: HAProxy accepts the socket proxy config
+        run: |
+          image="$(grep -o 'docker.io/library/haproxy:[^"]*' agent/install.sh)"
+          podman run --rm -e SENTINEL_ENGINE_SOCKET=/tmp/e.sock -e SENTINEL_PROXY_SOCKET=/tmp/p.sock \
+            -v ./agent/socket-proxy.cfg:/p.cfg:ro "$image" haproxy -c -f /p.cfg
+      - name: Agent image builds
+        run: podman build -t localhost/sentinel-agent:ci -f agent/Containerfile agent
+
+  distros:
+    name: install in a systemd machine (${{ matrix.base }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        base: ["docker.io/library/ubuntu:24.04", "docker.io/library/amazonlinux:2023"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.8"
+          enable-cache: true
+      - run: cd backend && uv sync --locked
+      - name: Install podman-compose
+        run: |
+          uv tool install podman-compose==1.6.0
+          echo "PODMAN_COMPOSE_PROVIDER=$(command -v podman-compose)" >> "$GITHUB_ENV"
+      - name: Podman API socket (container stats for the test machine)
+        run: systemctl --user enable --now podman.socket
+      - name: Build the test machine image
+        run: |
+          podman build -t localhost/sentinel-test-machine:ci --build-arg BASE=${{ matrix.base }} \
+            -f backend/tests/agent/Containerfile.systemd backend/tests/agent
+      - name: Start the SENTINEL stack
+        run: |
+          if ! timeout 420 make stack-up-fast; then
+            echo "::error::stack did not start within 7 minutes"; podman ps -a; exit 1
+          fi
+          for i in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:8000/readyz >/dev/null && \
+            curl -fsS http://127.0.0.1:3100/ready >/dev/null && \
+            curl -fsS http://127.0.0.1:9090/-/ready >/dev/null && exit 0
+            sleep 2
+          done
+          podman ps -a; exit 1
+      - name: Install, check, uninstall
+        env:
+          SENTINEL_AGENT_TARGET: container
+          SENTINEL_AGENT_TEST_IMAGE: localhost/sentinel-test-machine:ci
+          SENTINEL_AGENT_KEEP_MACHINE: "1"
+        run: cd backend && uv run pytest -m agent -v
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          podman exec sentinel-agent-test journalctl -u sentinel-agent -u sentinel-agent-socket-proxy -n 80 --no-pager || true
+          for c in caddy gateway api; do echo "=== $c"; podman logs --tail 40 "sentinel_${c}_1" || true; done
+
+  install:
+    name: install on a fresh Ubuntu 24.04 VM (healthy < 2 min, data, proxy, uninstall)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.8"
+          enable-cache: true
+      - run: cd backend && uv sync --locked
+      - name: Install podman-compose
+        run: |
+          uv tool install podman-compose==1.6.0
+          echo "PODMAN_COMPOSE_PROVIDER=$(command -v podman-compose)" >> "$GITHUB_ENV"
+      - name: Start the SENTINEL stack
+        run: |
+          if ! timeout 420 make stack-up-fast; then
+            echo "::error::stack did not start within 7 minutes"; podman ps -a; exit 1
+          fi
+          for i in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:8000/readyz >/dev/null && \
+            curl -fsS http://127.0.0.1:3100/ready >/dev/null && \
+            curl -fsS http://127.0.0.1:9090/-/ready >/dev/null && exit 0
+            sleep 2
+          done
+          podman ps -a; exit 1
+      - name: Install the agent on this VM and check everything end to end
+        env:
+          SENTINEL_AGENT_TARGET: host
+          SENTINEL_AGENT_FOOTPRINT_OUT: ${{ runner.temp }}/footprint.json
+        run: cd backend && uv run pytest -m agent -v
+      - name: Footprint
+        if: always()
+        run: cat "$RUNNER_TEMP/footprint.json" || true
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          sudo systemctl status sentinel-agent sentinel-agent-socket-proxy --no-pager || true
+          sudo journalctl -u sentinel-agent -u sentinel-agent-socket-proxy -n 80 --no-pager || true
+          for c in caddy gateway api; do echo "=== $c"; podman logs --tail 40 "sentinel_${c}_1" || true; done

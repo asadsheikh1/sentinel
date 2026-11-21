@@ -32,5 +32,24 @@
 		reverse_proxy gateway:4318
 	}
 
+	# SENTINEL Agent: installer files (public) and the per-integration config
+	# (ingest token, checked by the API). Read-only, nothing else of the API.
+	@agent_files {
+		method GET HEAD
+		path /agent/install.sh /agent/uninstall.sh /agent/socket-proxy.cfg /agent/Containerfile
+	}
+	@agent_config {
+		method GET
+		path_regexp ^/api/v1/integrations/[0-9a-f-]{36}/agent-config$
+	}
+	route @agent_files {
+		request_header -X-Sentinel-Internal-Auth
+		reverse_proxy api:8000
+	}
+	route @agent_config {
+		request_header -X-Sentinel-Internal-Auth
+		reverse_proxy api:8000
+	}
+
 	respond 404
 }

@@ -1,0 +1,518 @@
+"""SENTINEL Agent end to end: install on a fresh machine, see its data, uninstall.
+
+Needs the full stack with short intervals (`make stack-up-fast`). Two targets:
+
+* ``SENTINEL_AGENT_TARGET=container`` (default, `make test-agent`): a disposable
+  Ubuntu 24.04 container with systemd as PID 1, on the ``sentinel-ingest``
+  network. Container stats come from this machine's Podman socket, mounted in.
+* ``SENTINEL_AGENT_TARGET=host`` (CI): installs on the machine running the test,
+  a fresh Ubuntu 24.04 VM, with sudo. Container stats and logs come from a
+  rootful Podman container started by the test.
+
+Optional: ``SENTINEL_AGENT_PACKAGE_DIR`` holds the otelcol-contrib tarball, its
+``.sigstore.json`` and ``cosign-linux-<arch>``, to skip the downloads (the
+installer still verifies all of them). ``SENTINEL_AGENT_FOOTPRINT_OUT`` is
+where the measured footprint is written as JSON.
+"""
+
+import json
+import os
+import platform
+import re
+import shlex
+import subprocess
+import sys
+import time
+import uuid
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import httpx2 as httpx
+import pytest
+
+pytestmark = pytest.mark.agent
+
+API = os.environ.get("SENTINEL_TEST_API_URL", "http://127.0.0.1:8000")
+PROM = "http://127.0.0.1:9090"
+LOKI = "http://127.0.0.1:3100"
+TARGET = os.environ.get("SENTINEL_AGENT_TARGET", "container")
+IMAGE = os.environ.get("SENTINEL_AGENT_TEST_IMAGE", "localhost/sentinel-test-ubuntu:24.04")
+PACKAGE_DIR = os.environ.get("SENTINEL_AGENT_PACKAGE_DIR")
+FOOTPRINT_OUT = os.environ.get("SENTINEL_AGENT_FOOTPRINT_OUT")
+MACHINE = "sentinel-agent-test"
+APP = "agent-e2e-app"  # a container whose stats and logs the agent must pick up
+PASSWORD = "agent-e2e-password-1"
+ARCH = "arm64" if platform.machine() in {"arm64", "aarch64"} else "amd64"
+VERSION = "0.165.0"
+WATCHED = ["systemd-journald", "haproxy"]
+
+
+def eventually(fetch: Callable[[], Any], timeout: float = 120, every: float = 3) -> Any:
+    end = time.monotonic() + timeout
+    last: Any = None
+    while time.monotonic() < end:
+        try:
+            last = fetch()
+            if last:
+                return last
+        except (httpx.HTTPError, KeyError, IndexError, ValueError):
+            pass
+        time.sleep(every)
+    pytest.fail(f"condition not met after {timeout}s; last={last!r}")
+
+
+# ------------------------------------------------------------------ machine
+
+
+class Machine:
+    """Runs shell commands as root on the machine under test."""
+
+    def __init__(self) -> None:
+        self.prefix = ["podman", "exec", "-i", MACHINE] if TARGET == "container" else ["sudo", "-n"]
+
+    def sh(self, script: str, *, input: str | None = None, check: bool = True) -> str:
+        r = subprocess.run(
+            [*self.prefix, "bash", "-c", script],
+            input=input,
+            capture_output=True,
+            text=True,
+            timeout=900,
+        )
+        if check and r.returncode != 0:
+            raise AssertionError(f"`{script}` failed ({r.returncode}):\n{r.stdout}\n{r.stderr}")
+        return r.stdout
+
+    def ok(self, script: str) -> bool:
+        return (
+            subprocess.run([*self.prefix, "bash", "-c", script], capture_output=True).returncode
+            == 0
+        )
+
+
+def _podman_socket() -> str:
+    out = subprocess.run(
+        ["podman", "info", "--format", "{{.Host.RemoteSocket.Path}}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return out.removeprefix("unix://")
+
+
+@dataclass
+class Installed:
+    machine: Machine
+    iid: str
+    token: str = field(repr=False)  # never printed in test failures or CI logs
+    hostname: str
+    nonce: str
+    config_hash: str
+    install_s: float
+    healthy_s: float
+    output: str = field(repr=False)
+
+
+class Admin:
+    def __init__(self, client: httpx.Client, csrf: str) -> None:
+        self.client = client
+        self.h = {"X-CSRF-Token": csrf}
+
+    def create(self, **body: Any) -> dict[str, Any]:
+        r = self.client.post("/api/v1/integrations", json=body, headers=self.h)
+        assert r.status_code == 201, r.text
+        return r.json()  # type: ignore[no-any-return]
+
+    def get(self, path: str) -> Any:
+        r = self.client.get(path)
+        r.raise_for_status()
+        return r.json()
+
+
+@pytest.fixture(scope="module")
+def admin() -> Iterator[Admin]:
+    email = f"agent-e2e-{uuid.uuid4().hex[:8]}@example.com"
+    subprocess.run(
+        [sys.executable, "-m", "sentinel.cli", "create-admin", "--email", email, "--name", "Agent",
+         "--password-stdin"],
+        input=PASSWORD + "\n", text=True, check=True, capture_output=True,
+    )  # fmt: skip
+    with httpx.Client(base_url=API, timeout=20) as client:
+        r = client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD})
+        r.raise_for_status()
+        yield Admin(client, r.json()["csrf_token"])
+
+
+@pytest.fixture(scope="module")
+def http() -> Iterator[httpx.Client]:
+    with httpx.Client(timeout=20) as client:
+        yield client
+
+
+def _start_machine() -> tuple[Machine, str, list[str]]:
+    """Returns the machine, the endpoint it uses, and extra installer flags."""
+    if TARGET == "container":
+        subprocess.run(["podman", "rm", "-f", MACHINE], capture_output=True)
+        mounts = ["-v", f"{_podman_socket()}:/engine/podman.sock"]
+        if PACKAGE_DIR:
+            mounts += ["-v", f"{PACKAGE_DIR}:/pkg:ro"]
+        subprocess.run(
+            ["podman", "run", "-d", "--name", MACHINE, "--hostname", MACHINE,
+             "--network", "sentinel-ingest", "--privileged", *mounts, IMAGE],
+            check=True, capture_output=True,
+        )  # fmt: skip
+        machine = Machine()
+        eventually(lambda: machine.ok("systemctl is-system-running --wait >/dev/null 2>&1 || "
+                                      "systemctl is-system-running | grep -qE 'running|degraded'"),
+                   timeout=60, every=1)  # fmt: skip
+        # A minimal image: only curl, to fetch the installer the way a user does.
+        machine.sh(
+            "apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null 2>&1"
+            " || dnf install -y -q curl-minimal ca-certificates >/dev/null 2>&1 || true"
+        )
+        return (
+            machine,
+            "http://ingest.sentinel.internal:4319",
+            ["--engine-socket", "/engine/podman.sock"],
+        )
+    machine = Machine()
+    # A rootful Podman container with journald logs: what the agent must find.
+    machine.sh("systemctl enable --now podman.socket >/dev/null 2>&1")
+    machine.sh(
+        f"podman rm -f {APP} >/dev/null 2>&1; podman run -d --name {APP} --log-driver journald "
+        "docker.io/library/busybox:1.37 sh -c "
+        "'while true; do echo agent-e2e-app-line $(date +%s); sleep 2; done' >/dev/null"
+    )
+    return machine, "http://127.0.0.1:4319", []
+
+
+@pytest.fixture(scope="module")
+def installed(admin: Admin) -> Iterator[Installed]:
+    machine, endpoint, flags = _start_machine()
+    created = admin.create(
+        name=f"agent-e2e-{uuid.uuid4().hex[:8]}",
+        kind="container_host",
+        environment="dev",
+        config={"watched_processes": WATCHED, "collection_interval_s": 10},
+        expected_signals=["metrics", "logs"],
+    )
+    iid, token = created["integration"]["id"], created["ingest_token"]
+    setup = admin.get(f"/api/v1/integrations/{iid}/setup")
+    # Run what the setup page says, pointed at this machine's endpoint.
+    command = setup["install_command"].replace(setup["endpoint"], endpoint)
+    assert "sentinel-agent-install.sh" in command
+    assert token not in command
+    machine.sh("umask 077; cat > /root/sentinel-token", input=token)
+    if PACKAGE_DIR:
+        pkg = "/pkg" if TARGET == "container" else PACKAGE_DIR
+        flags += ["--package-file", f"{pkg}/otelcol-contrib_{VERSION}_linux_{ARCH}.tar.gz",
+                  "--cosign-file", f"{pkg}/cosign-linux-{ARCH}"]  # fmt: skip
+    started = time.monotonic()
+    output = machine.sh(
+        f"cd /root && {command.replace('sudo ', '')} --token-file /root/sentinel-token "
+        + " ".join(shlex.quote(f) for f in flags)
+    )
+    install_s = time.monotonic() - started
+
+    def healthy() -> bool:
+        return bool(admin.get(f"/api/v1/integrations/{iid}/status")["status"] == "healthy")
+
+    eventually(healthy, timeout=120, every=2)
+    state = dict(line.split("=", 1) for line in machine.sh("cat /opt/sentinel-agent/state").split())
+    yield Installed(
+        machine=machine,
+        iid=iid,
+        token=token,
+        hostname=machine.sh("cat /proc/sys/kernel/hostname").strip(),
+        nonce=state["verify_nonce"],
+        config_hash=state["config_hash"],
+        install_s=install_s,
+        healthy_s=time.monotonic() - started,
+        output=output,
+    )
+    if TARGET == "container" and not os.environ.get("SENTINEL_AGENT_KEEP_MACHINE"):
+        subprocess.run(["podman", "rm", "-f", MACHINE], capture_output=True)
+    if TARGET == "host":
+        machine.sh(f"podman rm -f {APP} >/dev/null 2>&1", check=False)
+
+
+def prom(http: httpx.Client, query: str) -> list[dict[str, Any]]:
+    r = http.get(f"{PROM}/api/v1/query", params={"query": query})
+    r.raise_for_status()
+    return r.json()["data"]["result"]  # type: ignore[no-any-return]
+
+
+def loki(http: httpx.Client, query: str) -> list[str]:
+    now = time.time_ns()
+    r = http.get(
+        f"{LOKI}/loki/api/v1/query_range",
+        params={"query": query, "start": now - 15 * 60 * 10**9, "end": now, "limit": 100},
+    )
+    r.raise_for_status()
+    return [line for s in r.json()["data"]["result"] for _, line in s["values"]]
+
+
+# ------------------------------------------------------------------ install
+
+
+def test_install_verifies_the_download_and_reaches_healthy_within_2_minutes(
+    installed: Installed,
+) -> None:
+    assert "Checksum OK" in installed.output
+    assert "Signature OK (signed by the OpenTelemetry release workflow" in installed.output
+    assert installed.token not in installed.output
+    # The acceptance criterion: from running the installer to `healthy`, downloads
+    # included. Once the agent runs, data arrives within seconds.
+    assert installed.healthy_s - installed.install_s < 60
+    assert installed.healthy_s < 120, (
+        f"healthy after {installed.healthy_s:.0f}s (installer took {installed.install_s:.0f}s)"
+    )
+
+
+def test_agent_runs_unprivileged_and_listens_only_on_loopback(installed: Installed) -> None:
+    m = installed.machine
+    assert m.sh("ps -o user= -C otelcol-contrib").split() == ["sentinel-agent"]
+    assert m.sh("id -nG sentinel-agent").split() == [
+        "sentinel-agent"
+    ]  # journal access via the unit
+    status = m.sh("grep -E '^(CapEff|NoNewPrivs)' /proc/$(pgrep -o otelcol-contrib)/status")
+    assert re.search(r"CapEff:\s+0+\n", status), status
+    assert re.search(r"NoNewPrivs:\s+1", status), status
+    listeners = m.sh("ss -Hltnup | grep otelcol || true").strip().splitlines()
+    assert listeners, "expected the loopback OTLP and self-metrics listeners"
+    for line in listeners:
+        local = line.split()[4]
+        assert local.startswith(("127.0.0.1:", "[::1]:")), line
+
+
+def test_secrets_live_only_in_the_0600_env_file(installed: Installed) -> None:
+    m = installed.machine
+    assert m.sh("stat -c '%a %U %G' /etc/sentinel-agent/agent.env").strip() == "600 root root"
+    assert m.sh("stat -c '%a %U %G' /etc/sentinel-agent/config.yaml").strip() == (
+        "640 root sentinel-agent"
+    )
+    assert installed.token in m.sh("cat /etc/sentinel-agent/agent.env")
+    assert not m.ok(
+        f"grep -rq {installed.token} /etc/sentinel-agent/config.yaml /etc/systemd/system"
+    )
+    assert not m.ok("runuser -u sentinel-agent -- cat /etc/sentinel-agent/agent.env")
+
+
+# ------------------------------------------------------------------ data
+
+
+def test_host_metrics_are_attributed_to_this_host(installed: Installed, http: httpx.Client) -> None:
+    sel = f'sentinel_integration_id="{installed.iid}",host_name="{installed.hostname}"'
+    metrics = [
+        "system_cpu_time_seconds_total",
+        "system_memory_usage_bytes",
+        "system_network_io_bytes_total",
+        "system_disk_io_bytes_total",
+    ]
+    # The filesystem scraper reports physical filesystems only, and skips a disk
+    # whose device node is missing: true of every disk inside a rootless test
+    # container (its root is overlay). On a VM (CI) the root disk is reported.
+    if TARGET == "host":
+        metrics.append("system_filesystem_usage_bytes")
+    for metric in metrics:
+        assert eventually(lambda m=metric: prom(http, f"{m}{{{sel}}}"), timeout=60), metric
+
+
+def test_watched_processes_and_only_those(installed: Installed, http: httpx.Client) -> None:
+    sel = f'sentinel_integration_id="{installed.iid}"'
+    series = eventually(lambda: prom(http, f"process_cpu_time_seconds_total{{{sel}}}"), timeout=60)
+    names = {s["metric"].get("process_executable_name") for s in series}
+    assert names <= set(WATCHED), names
+    assert "systemd-journald" in names
+
+
+def test_config_hash_and_agent_self_telemetry_arrive(
+    installed: Installed, http: httpx.Client
+) -> None:
+    sel = (
+        f'sentinel_integration_id="{installed.iid}",'
+        f'sentinel_agent_config_hash="{installed.config_hash}"'
+    )
+    assert eventually(lambda: prom(http, f"system_memory_usage_bytes{{{sel}}}"), timeout=60)
+    assert eventually(
+        lambda: prom(http, f"otelcol_exporter_sent_metric_points_total{{{sel}}}"), timeout=60
+    )
+
+
+def test_verification_marker_arrives_through_the_journal(
+    installed: Installed, http: httpx.Client
+) -> None:
+    query = f'{{sentinel_integration_id="{installed.iid}"}} |= "sentinel-verify-{installed.nonce}"'
+    lines = eventually(lambda: loki(http, query), timeout=60)
+    assert any(f"integration={installed.iid}" in line for line in lines)
+
+
+def test_container_metrics_are_attributed_to_containers(
+    installed: Installed, http: httpx.Client
+) -> None:
+    sel = f'sentinel_integration_id="{installed.iid}",container_name!=""'
+    series = eventually(lambda: prom(http, f"container_cpu_usage_total_nanoseconds_total{{{sel}}}"
+                                     f" or container_memory_usage_total_bytes{{{sel}}}"),
+                        timeout=90)  # fmt: skip
+    names = {s["metric"]["container_name"] for s in series}
+    expected = APP if TARGET == "host" else "sentinel_caddy_1"
+    assert expected in names, names
+    for s in series:
+        assert s["metric"]["host_name"] == installed.hostname
+
+
+def test_container_logs_are_attributed_to_the_container(
+    installed: Installed, http: httpx.Client
+) -> None:
+    if TARGET != "host":
+        pytest.skip("the test container can't see the outer machine's container journal")
+    query = (
+        f'{{sentinel_integration_id="{installed.iid}",service_name="{APP}"}}'
+        ' |= "agent-e2e-app-line"'
+    )
+    assert eventually(lambda: loki(http, query), timeout=90)
+
+
+def test_host_and_container_entities_are_discovered(installed: Installed, admin: Admin) -> None:
+    def host() -> list[dict[str, Any]]:
+        found = admin.get(f"/api/v1/entities?type=host&q={installed.hostname}")
+        return [e for e in found if installed.iid in e["integration_ids"]]
+
+    assert eventually(host, timeout=90)
+    containers = eventually(
+        lambda: [e for e in admin.get("/api/v1/entities?type=container&limit=500")
+                 if installed.iid in e["integration_ids"]],
+        timeout=90,
+    )  # fmt: skip
+    assert containers
+
+
+# ------------------------------------------------------------------ socket proxy
+
+
+def _proxy(m: Machine, method: str, path: str) -> str:
+    return m.sh(
+        "runuser -u sentinel-agent -- curl -s -o /dev/null -w '%{http_code}' "
+        f"--unix-socket /run/sentinel-agent-proxy/engine.sock -X {method} 'http://engine{path}'"
+    ).strip()
+
+
+def test_socket_proxy_allows_only_the_reads_the_agent_needs(installed: Installed) -> None:
+    m = installed.machine
+    assert _proxy(m, "GET", "/v1.41/containers/json") == "200"
+    assert _proxy(m, "GET", "/_ping") == "200"
+    denied = [
+        # Writes to allowed paths: only the method rule stops these.
+        ("POST", "/v1.41/containers/json"),
+        ("DELETE", "/_ping"),
+        ("PUT", "/containers/sentinel_api_1/json"),
+        # Paths outside the allowlist.
+        ("POST", "/v1.41/containers/create"),
+        ("POST", "/containers/sentinel_api_1/stop"),
+        ("DELETE", "/containers/sentinel_api_1"),
+        ("PUT", "/containers/x/archive"),
+        ("GET", "/containers/sentinel_api_1/logs?stdout=1"),
+        ("GET", "/containers/sentinel_api_1/stats?stream=true"),
+        ("GET", "/info"),
+        ("GET", "/images/json"),
+        ("GET", "/secrets"),
+        ("GET", "/containers/../info"),
+    ]
+    for method, path in denied:
+        assert _proxy(m, method, path) == "403", (method, path)
+
+
+def test_agent_user_cannot_reach_the_raw_engine_socket(installed: Installed) -> None:
+    socket = installed.machine.sh("sed -n 's/^engine_socket=//p' /opt/sentinel-agent/state").strip()
+    assert socket
+    code = installed.machine.sh(
+        f"runuser -u sentinel-agent -- curl -s -o /dev/null -w '%{{http_code}}' "
+        f"--unix-socket {socket} http://engine/_ping || true"
+    ).strip()
+    assert code == "000"  # connection refused by file permissions
+
+
+# ------------------------------------------------------------------ footprint
+
+
+def test_footprint(installed: Installed) -> None:
+    """RSS and CPU of the agent over 60 s (published in docs/progress/step-08.md)."""
+    m = installed.machine
+    script = r"""
+pid=$(pgrep -o otelcol-contrib); hz=$(getconf CLK_TCK)
+t0=$(awk '{print $14+$15}' /proc/$pid/stat); s0=$(date +%s.%N); peak=0
+for i in $(seq 1 12); do
+  r=$(awk '/VmRSS/{print $2}' /proc/$pid/status); [ "$r" -gt "$peak" ] && peak=$r; sleep 5
+done
+t1=$(awk '{print $14+$15}' /proc/$pid/stat); s1=$(date +%s.%N)
+rss=$(awk '/VmRSS/{print $2}' /proc/$pid/status)
+anon=$(awk '/RssAnon/{print $2}' /proc/$pid/status)
+file=$(awk '/RssFile/{print $2}' /proc/$pid/status)
+hp=$(pgrep -o haproxy || true)
+proxy=$([ -n "$hp" ] && awk '/VmRSS/{print $2}' /proc/$hp/status || echo 0)
+cpu=$(awk -v a="$t0" -v b="$t1" -v hz="$hz" -v s0="$s0" -v s1="$s1" \
+  'BEGIN{printf "%.2f", (b-a)/hz/(s1-s0)*100}')
+echo "{\"rss_kib\": $rss, \"rss_anon_kib\": $anon, \"rss_file_kib\": $file,"\
+" \"peak_rss_kib\": $peak, \"proxy_rss_kib\": $proxy,"\
+" \"cpu_percent\": $cpu, \"cpus\": $(nproc)}"
+"""
+    result = json.loads(m.sh(script))
+    result.update(
+        target=TARGET, install_s=round(installed.install_s), healthy_s=round(installed.healthy_s)
+    )
+    print("footprint:", json.dumps(result))
+    if FOOTPRINT_OUT:
+        Path(FOOTPRINT_OUT).write_text(json.dumps(result, indent=2))
+    assert result["peak_rss_kib"] < 400 * 1024  # the unit's MemoryMax
+    assert result["cpu_percent"] < 50  # the unit's CPUQuota
+
+
+# ------------------------------------------------------------------ re-run, uninstall
+
+
+def _endpoint() -> str:
+    return (
+        "http://ingest.sentinel.internal:4319" if TARGET == "container" else "http://127.0.0.1:4319"
+    )
+
+
+def _cached_flags() -> str:
+    flags = "--engine-socket /engine/podman.sock" if TARGET == "container" else ""
+    if PACKAGE_DIR:
+        pkg = "/pkg" if TARGET == "container" else PACKAGE_DIR
+        flags += (f" --package-file {pkg}/otelcol-contrib_{VERSION}_linux_{ARCH}.tar.gz"
+                  f" --cosign-file {pkg}/cosign-linux-{ARCH}")  # fmt: skip
+    return flags
+
+
+def test_rerunning_the_installer_updates_in_place(installed: Installed, admin: Admin) -> None:
+    m = installed.machine
+    before = m.sh("systemctl show -p InvocationID --value sentinel-agent").strip()
+    out = m.sh(
+        f"cd /root && bash sentinel-agent-install.sh --endpoint {_endpoint()} "
+        f"--integration {installed.iid} --token-file /root/sentinel-token {_cached_flags()}"
+    )
+    assert "is running" in out
+    assert m.sh("systemctl show -p InvocationID --value sentinel-agent").strip() != before
+    assert m.sh("getent passwd sentinel-agent | wc -l").strip() == "1"
+    status = admin.get(f"/api/v1/integrations/{installed.iid}/status")["status"]
+    assert status == "healthy"
+
+
+def test_uninstall_leaves_no_residue(installed: Installed, http: httpx.Client) -> None:
+    m = installed.machine
+    m.sh(f"curl -fsSL {_endpoint()}/agent/uninstall.sh -o /root/sentinel-agent-uninstall.sh"
+         " && bash /root/sentinel-agent-uninstall.sh")  # fmt: skip
+    leftovers = m.sh(
+        "ls -d /etc/sentinel-agent /opt/sentinel-agent /var/lib/sentinel-agent "
+        "/run/sentinel-agent-proxy /etc/systemd/system/sentinel-agent*.service 2>/dev/null; "
+        "getent passwd sentinel-agent; getent group sentinel-agent; "
+        "pgrep -a otelcol-contrib; pgrep -a haproxy; "
+        "systemctl list-units --all --no-legend 'sentinel-agent*' ; true"
+    ).strip()
+    assert leftovers == "", leftovers
+    if m.ok("command -v dpkg"):
+        assert not m.ok("dpkg -s haproxy >/dev/null 2>&1")  # it was installed by us
+    else:
+        assert not m.ok("rpm -q haproxy")

@@ -4,6 +4,8 @@ on:
   pull_request:
     paths: &paths
       - "backend/**"
+      - "agent/**"
+      - ".containerignore"
       - "deploy/compose/**"
       - "scripts/db_roles.sql"
       - "docs/database.md"
@@ -83,7 +85,7 @@ jobs:
         run: |
           podman --version
           podman build --platform linux/amd64,linux/arm64 \
-            --manifest localhost/sentinel-api:ci -f backend/Containerfile backend
+            --manifest localhost/sentinel-api:ci -f backend/Containerfile .
           podman manifest inspect localhost/sentinel-api:ci | grep '"architecture"'
       - name: Smoke-test the image
         run: |

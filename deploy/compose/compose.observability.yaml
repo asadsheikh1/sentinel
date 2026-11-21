@@ -116,6 +116,9 @@ services:
       SENTINEL_INTEGRATION_FLUSH_INTERVAL_S: ${SENTINEL_INTEGRATION_FLUSH_INTERVAL_S:-30}
       SENTINEL_INTEGRATION_STALE_AFTER_S: ${SENTINEL_INTEGRATION_STALE_AFTER_S:-270}
       SENTINEL_ENTITY_DISCOVERY_INTERVAL_S: ${SENTINEL_ENTITY_DISCOVERY_INTERVAL_S:-60}
+    # Development: serve agent/ from the checkout, so installer edits need no rebuild.
+    volumes:
+      - ../../agent:/app/agent:ro,Z
     networks: [default, telemetry]
 
 networks:
