@@ -102,7 +102,13 @@ jobs:
           SENTINEL_AGENT_TARGET: container
           SENTINEL_AGENT_TEST_IMAGE: localhost/sentinel-test-machine:ci
           SENTINEL_AGENT_KEEP_MACHINE: "1"
+          SENTINEL_AGENT_FOOTPRINT_OUT: ${{ runner.temp }}/footprint.json
         run: cd backend && uv run pytest -m agent -v
+      - name: Footprint and install timings
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/footprint.json" || true
+          cat "$RUNNER_TEMP/footprint.install.log" || true
       - name: Diagnostics on failure
         if: failure()
         run: |
@@ -141,9 +147,11 @@ jobs:
           SENTINEL_AGENT_TARGET: host
           SENTINEL_AGENT_FOOTPRINT_OUT: ${{ runner.temp }}/footprint.json
         run: cd backend && uv run pytest -m agent -v
-      - name: Footprint
+      - name: Footprint and install timings
         if: always()
-        run: cat "$RUNNER_TEMP/footprint.json" || true
+        run: |
+          cat "$RUNNER_TEMP/footprint.json" || true
+          cat "$RUNNER_TEMP/footprint.install.log" || true
       - name: Diagnostics on failure
         if: failure()
         run: |

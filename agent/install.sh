@@ -56,7 +56,7 @@ SELF_METRICS=http://127.0.0.1:18888/metrics
 ENDPOINT="" INTEGRATION="" MODE=host TOKEN_FILE="" ENGINE_SOCKET="" PACKAGE_FILE="" COSIGN_FILE=""
 NETWORK="" WORK=""
 
-log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+log() { printf '\033[1;34m==>\033[0m [%3ss] %s\n' "$SECONDS" "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 cleanup() { [[ -n "$WORK" && -d "$WORK" ]] && rm -rf "$WORK"; return 0; }
@@ -149,6 +149,7 @@ command -v sha256sum >/dev/null || need+=(coreutils)
 if [[ ${#need[@]} -gt 0 ]]; then
   log "Installing prerequisites: ${need[*]}"
   pkg_install "${need[@]}"
+  log "Prerequisites installed"
 fi
 
 WORK="$(mktemp -d)"

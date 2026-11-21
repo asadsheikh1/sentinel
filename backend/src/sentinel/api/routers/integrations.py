@@ -166,7 +166,7 @@ async def list_integrations(svc: Service, _: Viewer) -> list[IntegrationOut]:
 
 @router.post("", response_model=IntegrationCreated, status_code=status.HTTP_201_CREATED)
 async def create_integration(
-    body: IntegrationCreate, request: Request, svc: Service, admin: Manager
+    body: IntegrationCreate, request: Request, db: DbSession, svc: Service, admin: Manager
 ) -> IntegrationCreated:
     _check_agent_options(body.kind, body.config)
     try:
@@ -182,6 +182,9 @@ async def create_integration(
         )
     except ConflictError as e:
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+    # Commit before forgetting cached "unknown token" answers: otherwise a client
+    # using the new token at once can be rejected, and that cached for 5 s.
+    await db.commit()
     request.app.state.ingest_gate.clear_negative_cache()
     return IntegrationCreated(
         integration=IntegrationOut.model_validate(integration), ingest_token=token

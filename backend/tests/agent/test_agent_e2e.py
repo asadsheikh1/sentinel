@@ -194,7 +194,13 @@ def installed(admin: Admin) -> Iterator[Installed]:
         name=f"agent-e2e-{uuid.uuid4().hex[:8]}",
         kind="container_host",
         environment="dev",
-        config={"watched_processes": WATCHED, "collection_interval_s": 10},
+        config={
+            "watched_processes": WATCHED,
+            "collection_interval_s": 10,
+            # On a VM running the dev stack, Jaeger's dev ports hold 4317/4318
+            # (the installer refuses to start on a clash, which is tested too).
+            **({"otlp_grpc_port": 14317, "otlp_http_port": 14318} if TARGET == "host" else {}),
+        },
         expected_signals=["metrics", "logs"],
     )
     iid, token = created["integration"]["id"], created["ingest_token"]
@@ -214,6 +220,8 @@ def installed(admin: Admin) -> Iterator[Installed]:
         + " ".join(shlex.quote(f) for f in flags)
     )
     install_s = time.monotonic() - started
+    if FOOTPRINT_OUT:  # the installer's own step timings, for the report
+        Path(FOOTPRINT_OUT).with_suffix(".install.log").write_text(output)
 
     def healthy() -> bool:
         return bool(admin.get(f"/api/v1/integrations/{iid}/status")["status"] == "healthy")
@@ -496,8 +504,13 @@ def test_rerunning_the_installer_updates_in_place(installed: Installed, admin: A
     assert "is running" in out
     assert m.sh("systemctl show -p InvocationID --value sentinel-agent").strip() != before
     assert m.sh("getent passwd sentinel-agent | wc -l").strip() == "1"
-    status = admin.get(f"/api/v1/integrations/{installed.iid}/status")["status"]
-    assert status == "healthy"
+    # A restart leaves a short gap, which the fast test intervals can see as
+    # `degraded` for a moment; it must be healthy again shortly.
+    eventually(
+        lambda: admin.get(f"/api/v1/integrations/{installed.iid}/status")["status"] == "healthy",
+        timeout=60,
+        every=2,
+    )
 
 
 def test_uninstall_leaves_no_residue(installed: Installed, http: httpx.Client) -> None:
