@@ -1,0 +1,12 @@
+# gitleaks: default rules, plus an allowlist for test fixtures that hold FAKE
+# secrets on purpose (the redaction corpus and recorded telemetry). Nothing
+# else is exempt; add a path here only for deliberate test data.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Deliberate fake secrets in redaction test fixtures"
+paths = [
+  '''^backend/tests/fixtures/redaction/corpus\.yaml$''',
+  '''^backend/tests/fixtures/telemetry/aviro\.json$''',
+]

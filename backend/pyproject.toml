@@ -28,6 +28,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "httpx2>=2.16.0",
+    "hypothesis>=6.170.17",
     "import-linter>=2.16",
     "mypy>=2.4.1",
     "opentelemetry-proto>=1.45.2",
@@ -102,12 +103,13 @@ fail_under = 85
 root_package = "sentinel"
 
 [[tool.importlinter.contracts]]
-name = "Layering: cli -> api -> integrations -> auth -> security -> db -> log -> config"
+name = "Layering: cli -> api -> integrations -> telemetry -> auth -> security -> db -> log -> config"
 type = "layers"
 layers = [
   "sentinel.cli",
   "sentinel.api",
   "sentinel.integrations",
+  "sentinel.telemetry",
   "sentinel.auth",
   "sentinel.security",
   "sentinel.db",
