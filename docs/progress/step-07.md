@@ -1,7 +1,7 @@
 # Step 7 report — Telemetry query adapters and redaction
 
 **Status:** done locally. CI: CI_RESULT
-**PR:** PR_LINK (not merged; merging is your decision)
+**PR:** [PR #7](https://github.com/asadsheikh1/sentinel/pull/7) (not merged; merging is your decision)
 **Date:** 2026-11-21
 
 ## What was built
