@@ -1,0 +1,94 @@
+# Host rule pack: any machine running the SENTINEL Agent (host_metrics receiver).
+# Written by label only, so every onboarded host is covered automatically.
+# Every alert carries: severity, pack, entity_type, and the host's identity.
+groups:
+  - name: pack-host
+    interval: 30s
+    rules:
+      # Busy fraction of all CPUs: 1 - idle share.
+      - record: host:cpu_busy:ratio5m
+        expr: >
+          1 - (
+            sum by (host_name, sentinel_integration_id) (rate(system_cpu_time_seconds_total{state="idle"}[5m]))
+            / sum by (host_name, sentinel_integration_id) (rate(system_cpu_time_seconds_total[5m]))
+          )
+
+      # "Available" memory: free + page cache + buffers + reclaimable slab.
+      - record: host:memory_available:ratio
+        expr: >
+          sum by (host_name, sentinel_integration_id) (
+            system_memory_usage_bytes{state=~"free|cached|buffered|slab_reclaimable"})
+          / sum by (host_name, sentinel_integration_id) (system_memory_usage_bytes)
+
+      - record: host:filesystem_used:ratio
+        expr: >
+          sum by (host_name, sentinel_integration_id, device, mountpoint) (system_filesystem_usage_bytes{state="used"})
+          / sum by (host_name, sentinel_integration_id, device, mountpoint) (system_filesystem_usage_bytes)
+
+      - record: host:filesystem_inodes_used:ratio
+        expr: >
+          sum by (host_name, sentinel_integration_id, device, mountpoint) (system_filesystem_inodes_usage{state="used"})
+          / sum by (host_name, sentinel_integration_id, device, mountpoint) (system_filesystem_inodes_usage)
+
+      - alert: HostHighCpu
+        expr: host:cpu_busy:ratio5m > 0.90
+        for: 10m
+        labels: { severity: warning, pack: host, entity_type: host }
+        annotations:
+          summary: "CPU on {{ $labels.host_name }} above 90% for 10 minutes ({{ $value | humanizePercentage }})"
+
+      - alert: HostMemoryLow
+        expr: host:memory_available:ratio < 0.10
+        for: 5m
+        labels: { severity: warning, pack: host, entity_type: host }
+        annotations:
+          summary: "Available memory on {{ $labels.host_name }} below 10% ({{ $value | humanizePercentage }})"
+
+      - alert: HostFilesystemFull
+        expr: host:filesystem_used:ratio > 0.90
+        for: 2m
+        labels: { severity: critical, pack: host, entity_type: host }
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.host_name }} is {{ $value | humanizePercentage }} full"
+
+      # Full within 4 hours at the rate of the last 30 minutes (and already half full,
+      # so an empty disk that briefly grows doesn't count).
+      - alert: HostFilesystemFillingUp
+        expr: >
+          host:filesystem_used:ratio > 0.5
+          and on (host_name, sentinel_integration_id, device, mountpoint)
+          predict_linear(
+            sum by (host_name, sentinel_integration_id, device, mountpoint) (system_filesystem_usage_bytes{state="free"})[30m:1m],
+            4 * 3600) < 0
+        for: 5m
+        labels: { severity: warning, pack: host, entity_type: host }
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.host_name }} will be full within 4 hours"
+
+      - alert: HostInodesHigh
+        expr: host:filesystem_inodes_used:ratio > 0.90
+        for: 5m
+        labels: { severity: warning, pack: host, entity_type: host }
+        annotations:
+          summary: "Inodes on {{ $labels.mountpoint }} ({{ $labels.host_name }}) {{ $value | humanizePercentage }} used"
+
+      # A watched process that was running 10 minutes ago and isn't now.
+      - alert: HostWatchedProcessAbsent
+        expr: >
+          count by (host_name, sentinel_integration_id, process_executable_name) (
+            process_cpu_time_seconds_total offset 10m)
+          unless
+          count by (host_name, sentinel_integration_id, process_executable_name) (
+            process_cpu_time_seconds_total)
+        for: 2m
+        labels: { severity: critical, pack: host, entity_type: host }
+        annotations:
+          summary: "Watched process {{ $labels.process_executable_name }} is not running on {{ $labels.host_name }}"
+
+      - alert: HostNetworkErrors
+        expr: >
+          sum by (host_name, sentinel_integration_id, device) (rate(system_network_errors_total[5m])) > 1
+        for: 10m
+        labels: { severity: warning, pack: host, entity_type: host }
+        annotations:
+          summary: "Network errors on {{ $labels.device }} ({{ $labels.host_name }}): {{ $value | humanize }}/s"

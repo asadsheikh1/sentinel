@@ -18,6 +18,7 @@ from sentinel.api.routers import (
     audit,
     auth,
     checks,
+    ingest,
     ingest_auth,
     integrations,
     users,
@@ -29,6 +30,8 @@ from sentinel.checks.prober_identity import ensure_prober
 from sentinel.checks.state import probe_state_pass
 from sentinel.config import Settings, get_settings
 from sentinel.db.engine import create_engine, create_session_factory, ping
+from sentinel.detection.gaps import gap_pass
+from sentinel.ingestion.alertmanager_key import ensure_alertmanager_key
 from sentinel.integrations import jobs
 from sentinel.integrations.entities import prometheus_query
 from sentinel.integrations.gate import IngestGate
@@ -73,6 +76,10 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
         except Exception as exc:  # the API must start (and answer /healthz) without the DB
             app.state.prober_integration_id = None
             log.warning("prober_provisioning_failed", error=type(exc).__name__)
+        try:
+            await ensure_alertmanager_key(app.state.session_factory, settings)
+        except Exception as exc:
+            log.warning("alertmanager_key_provisioning_failed", error=type(exc).__name__)
         tasks = jobs.start(gate) if settings.background_jobs_enabled else []
         if settings.background_jobs_enabled:
             query = prometheus_query(settings.prometheus_url)
@@ -82,6 +89,15 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
                         "probe_state",
                         settings.probe_state_interval_s,
                         lambda: probe_state_pass(app.state.session_factory, query, gate),
+                    )
+                )
+            )
+            tasks.append(
+                asyncio.create_task(
+                    jobs.forever(
+                        "telemetry_gaps",
+                        settings.gap_interval_s,
+                        lambda: gap_pass(app.state.session_factory),
                     )
                 )
             )
@@ -146,5 +162,8 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
     app.include_router(checks.router)
     app.include_router(checks.prober_router)
     app.include_router(checks.events_router)
+    app.include_router(ingest.router)
+    app.include_router(ingest.signals_router)
+    app.include_router(ingest.deployments_router)
 
     return app

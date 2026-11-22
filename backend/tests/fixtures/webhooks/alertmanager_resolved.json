@@ -1,0 +1,29 @@
+{
+  "receiver": "sentinel",
+  "status": "resolved",
+  "alerts": [
+    {
+      "status": "resolved",
+      "labels": {
+        "alertname": "ServiceHighErrorRatio",
+        "entity_type": "service",
+        "job": "aviro/orders",
+        "pack": "service",
+        "service_name": "orders",
+        "severity": "critical"
+      },
+      "annotations": { "summary": "orders: 20% of requests fail" },
+      "startsAt": "2026-11-22T09:00:30Z",
+      "endsAt": "2026-11-22T09:12:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=service%3Ahttp_error_ratio%3Arate1m",
+      "fingerprint": "4b5f9c2d1e3a7f60"
+    }
+  ],
+  "groupLabels": { "alertname": "ServiceHighErrorRatio" },
+  "commonLabels": {},
+  "commonAnnotations": {},
+  "externalURL": "http://alertmanager:9093",
+  "version": "4",
+  "groupKey": "{}:{alertname=\"ServiceHighErrorRatio\"}",
+  "truncatedAlerts": 0
+}

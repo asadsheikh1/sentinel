@@ -182,3 +182,55 @@ async def discover(db: AsyncSession, query: Query) -> tuple[int, dict[str, int]]
         for row in await query(SERIES_QUERY)
     }
     return len(entities), series
+
+
+async def resolve_entity(db: AsyncSession, labels: Mapping[str, str]) -> uuid.UUID | None:
+    """The inventory entity an alert or event is about, from its labels.
+
+    Most specific first: a health check's endpoint, a container, a service, a host.
+    Services are matched by name (and namespace) across environments, newest first,
+    because alert labels don't always carry the environment.
+    """
+    from sentinel.db.models import HealthCheck  # avoid an import cycle at module load
+
+    if check_id := labels.get("sentinel_check_id"):
+        try:
+            check = await db.get(HealthCheck, uuid.UUID(check_id))
+        except ValueError:
+            check = None
+        if check is not None and check.entity_id is not None:
+            return check.entity_id
+    host = labels.get("host_name")
+    if container := labels.get("container_name"):
+        found = await db.scalar(
+            select(Entity.id).where(
+                Entity.type == EntityType.CONTAINER,
+                Entity.key == f"{host or 'unknown'}/{container}",
+            )
+        )
+        if found:
+            return found
+    service = labels.get("service_name")
+    if not service and (job := labels.get("job")):
+        service = job.rsplit("/", 1)[-1]
+    if service:
+        namespace = labels.get("service_namespace") or (
+            labels["job"].rsplit("/", 1)[0] if "/" in labels.get("job", "") else ""
+        )
+        # By attribute, not by key: a deployment says "orders", the inventory knows
+        # "aviro/orders@dev". The namespace and environment narrow it when given.
+        stmt = select(Entity.id).where(
+            Entity.type == EntityType.SERVICE, Entity.attributes["service.name"].astext == service
+        )
+        if namespace:
+            stmt = stmt.where(Entity.attributes["service.namespace"].astext == namespace)
+        if env := labels.get("deployment_environment_name"):
+            stmt = stmt.where(Entity.attributes["deployment.environment.name"].astext == env)
+        found = await db.scalar(stmt.order_by(Entity.last_seen.desc()).limit(1))
+        if found:
+            return found
+    if host:
+        return await db.scalar(
+            select(Entity.id).where(Entity.type == EntityType.HOST, Entity.key == host)
+        )
+    return None

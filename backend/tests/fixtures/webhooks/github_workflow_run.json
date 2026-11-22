@@ -1,0 +1,17 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 501,
+    "name": "ci-backend",
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "2c6e7d8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d",
+    "head_branch": "main",
+    "event": "push",
+    "run_number": 42,
+    "run_attempt": 1,
+    "html_url": "https://github.com/asadsheikh1/aviro-shop/actions/runs/501",
+    "updated_at": "2026-11-22T09:03:00Z"
+  },
+  "repository": { "id": 811, "name": "aviro-shop", "full_name": "asadsheikh1/aviro-shop" }
+}

@@ -110,3 +110,22 @@ def logs_payload(results: Iterable[Result]) -> dict[str, Any]:
             }
         )
     return {"resourceLogs": resource_logs}
+
+
+def heartbeat_payload(checks: int) -> dict[str, Any]:
+    """``sentinel_prober_checks``: how many checks the prober is running (also its pulse)."""
+    import time
+
+    return {
+        "resourceMetrics": [
+            {
+                "resource": {"attributes": [_attr("service.name", SERVICE_NAME)]},
+                "scopeMetrics": [
+                    {
+                        "scope": {"name": "sentinel.prober"},
+                        "metrics": [_gauge("sentinel.prober.checks", "", checks, time.time_ns())],
+                    }
+                ],
+            }
+        ]
+    }

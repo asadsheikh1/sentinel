@@ -21,7 +21,7 @@ jobs:
   gateway:
     name: ingestion gateway end to end (rootless Podman)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
@@ -62,3 +62,8 @@ jobs:
         run: |
           podman ps -a
           for c in caddy gateway api; do echo "=== $c"; podman logs --tail 60 "sentinel_${c}_1" || true; done
+          echo "=== alerts in Prometheus"; curl -s http://127.0.0.1:9090/api/v1/alerts || true
+          echo; echo "=== alerts in Alertmanager"; curl -s http://127.0.0.1:9093/api/v2/alerts || true
+          echo; for c in alertmanager prometheus; do echo "=== $c"; podman logs --tail 40 "sentinel_${c}_1" 2>&1 || true; done
+          echo "=== alertmanager key volume"; podman exec sentinel_alertmanager_1 ls -la /etc/alertmanager/secrets/ || true
+          echo "=== api: deliveries and warnings"; podman logs sentinel_api_1 2>&1 | grep -E 'ingest/alertmanager|alertmanager_key|"level": "(warning|error)"' | tail -40 || true

@@ -130,6 +130,9 @@ def test_endpoint_down_is_visible_within_two_intervals(
     # The check's own integration is healthy because its results are arriving.
     eventually(lambda: admin.status(iid)["status"] == "healthy", timeout=30)
 
+    # Leave nothing behind: a leftover check would alert forever on a target that's gone.
+    assert admin.client.delete(f"/api/v1/checks/{cid}", headers=admin.h).status_code == 204
+
 
 def test_unsafe_targets_are_refused_at_creation(admin: Admin) -> None:
     iid, _ = admin.create(kind="http_check")

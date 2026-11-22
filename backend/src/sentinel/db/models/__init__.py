@@ -1,6 +1,7 @@
 """All ORM models. Importing this package registers every table on ``Base.metadata``."""
 
 from sentinel.db.models.checks import CheckKind, Event, EventType, HealthCheck, ProbeState
+from sentinel.db.models.detection import Deployment, Signal, SignalKind, SignalStatus
 from sentinel.db.models.identity import ApiKey, Session, User, UserInvite, UserRole
 from sentinel.db.models.integrations import (
     SIGNALS,
@@ -22,6 +23,7 @@ __all__ = [
     "ApiKey",
     "AuditLog",
     "CheckKind",
+    "Deployment",
     "Entity",
     "EntityRelation",
     "EntityType",
@@ -36,6 +38,9 @@ __all__ = [
     "Job",
     "ProbeState",
     "Session",
+    "Signal",
+    "SignalKind",
+    "SignalStatus",
     "User",
     "UserInvite",
     "UserRole",

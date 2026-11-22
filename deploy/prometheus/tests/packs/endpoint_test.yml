@@ -1,0 +1,42 @@
+# promtool tests for rules/packs/endpoint.yml (checks every 30 s)
+rule_files:
+  - ../../rules/packs/endpoint.yml
+evaluation_interval: 30s
+
+tests:
+  - interval: 30s
+    input_series:
+      # c1 goes down at 1m30s and stays down
+      - series: 'probe_success{sentinel_check_id="c1", sentinel_check_name="shop", server_address="shop.example.com"}'
+        values: "1 1 1 0 0 0 0 0 0 0 0"
+      # c2 fails once, then recovers
+      - series: 'probe_success{sentinel_check_id="c2", sentinel_check_name="api", server_address="api.example.com"}'
+        values: "1 1 1 0 1 1 1 1 1 1 1"
+      - series: 'probe_duration_seconds{sentinel_check_id="c3", sentinel_check_name="slow", server_address="slow.example.com"}'
+        values: "6x30"
+      - series: 'probe_duration_seconds{sentinel_check_id="c2", sentinel_check_name="api", server_address="api.example.com"}'
+        values: "0.2x30"
+      # time() at eval 10m is 600: c4 expires in 10 days, c5 in 60
+      - series: 'tls_cert_expiry_seconds{sentinel_check_id="c4", sentinel_check_name="soon", server_address="soon.example.com"}'
+        values: "864600x30"
+      - series: 'tls_cert_expiry_seconds{sentinel_check_id="c5", sentinel_check_name="fine", server_address="fine.example.com"}'
+        values: "5184600x30"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: EndpointDown
+        exp_alerts: [] # one failed result so far
+      - eval_time: 4m
+        alertname: EndpointDown
+        exp_alerts:
+          - exp_labels: { severity: critical, pack: endpoint, entity_type: endpoint, sentinel_check_id: c1, sentinel_check_name: shop, server_address: shop.example.com }
+            exp_annotations: { summary: "shop (shop.example.com) is down" }
+      - eval_time: 12m
+        alertname: EndpointSlow
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: endpoint, entity_type: endpoint, sentinel_check_id: c3, sentinel_check_name: slow, server_address: slow.example.com }
+            exp_annotations: { summary: "slow takes 6s on average" }
+      - eval_time: 10m
+        alertname: EndpointCertExpiringSoon
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: endpoint, entity_type: endpoint, sentinel_check_id: c4, sentinel_check_name: soon, server_address: soon.example.com }
+            exp_annotations: { summary: "The certificate of soon.example.com expires in 10d 0h 0m 0s" }

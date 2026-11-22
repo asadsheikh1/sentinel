@@ -138,6 +138,20 @@ def test_tcp_targets_report_host_and_port() -> None:
 # ------------------------------------------------------------------ prober loop
 
 
+def _results(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Metric uploads that carry check results (not the heartbeat)."""
+    return [
+        p
+        for p in posts
+        if any(
+            m["name"] == "probe.success"
+            for rm in p["resourceMetrics"]
+            for sm in rm["scopeMetrics"]
+            for m in sm["metrics"]
+        )
+    ]
+
+
 class FakeSentinel:
     """The ingest endpoint as the prober sees it."""
 
@@ -192,7 +206,7 @@ async def test_prober_loads_checks_and_exports_results(tmp_path: Path) -> None:
     assert await prober.refresh() == 1
     prober.results.append(_result(False, error="timeout"))
     assert await prober.flush()
-    assert len(fake.metrics) == 1
+    assert len(_results(fake.metrics)) == 1
     assert len(fake.logs) == 1
 
 
@@ -213,7 +227,7 @@ async def test_results_are_kept_while_sentinel_is_unreachable(tmp_path: Path) ->
     fake.fail_exports = False
     assert await prober.flush()
     assert prober.results == []
-    assert len(fake.metrics) == 1
+    assert len(_results(fake.metrics)) == 1
 
 
 async def test_missing_token_means_no_calls(tmp_path: Path) -> None:
@@ -241,3 +255,19 @@ def test_development_escape_hatches_are_refused_in_prod(env: dict[str, Any]) -> 
             internal_auth_secret="y" * 40,
             **env,
         )
+
+
+async def test_a_heartbeat_keeps_the_prober_fresh_between_check_runs(tmp_path: Path) -> None:
+    fake = FakeSentinel("sit_good")
+    prober = _prober(tmp_path, fake, "sit_good")
+    await prober.refresh()
+    assert await prober.flush()  # no results yet, but a heartbeat goes out
+    assert await prober.flush()  # within 15 s: not again
+    assert len(fake.metrics) == 1
+    names = [
+        m["name"]
+        for rm in fake.metrics[0]["resourceMetrics"]
+        for sm in rm["scopeMetrics"]
+        for m in sm["metrics"]
+    ]
+    assert names == ["sentinel.prober.checks"]

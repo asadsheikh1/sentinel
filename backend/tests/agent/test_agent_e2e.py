@@ -494,6 +494,65 @@ def test_container_event_stream_survives_idle_periods(installed: Installed) -> N
     assert errors == "0", f"{errors} event-stream errors in the agent journal"
 
 
+# ------------------------------------------------------------------ detection (Step 10)
+
+
+def _signals(admin: Admin, **params: str) -> list[dict[str, Any]]:
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    return list(admin.get(f"/api/v1/signals?{query}&limit=500"))
+
+
+def test_disk_filling_up_raises_a_host_signal(installed: Installed, admin: Admin) -> None:
+    """S13-style: a fill file pushes the root filesystem past 90%."""
+    if TARGET != "host":
+        pytest.skip("needs a real disk (a VM); a test container's filesystems are not physical")
+    m = installed.machine
+    fill = "/root/sentinel-e2e-fill"  # on the root filesystem, root-only
+    # Reserve (instantly, no writes) enough to reach 93% used.
+    m.sh(
+        'python3 -c \'import os; s=os.statvfs("/"); '
+        "need=int(s.f_bavail*s.f_frsize - 0.07*s.f_blocks*s.f_frsize); print(max(need,0))' "
+        f"| xargs -I{{}} fallocate -l {{}} {fill}"
+    )
+    try:
+
+        def host_signal() -> list[dict[str, Any]]:
+            return [
+                s
+                for s in _signals(admin, kind="prom_alert", status="firing")
+                if s["labels"].get("alertname") == "HostFilesystemFull"
+                and s["labels"].get("host_name") == installed.hostname
+            ]
+
+        found = eventually(host_signal, timeout=360, every=10)
+        assert found[0]["severity"] == "critical"
+        assert found[0]["entity_id"]  # attributed to the host entity
+    finally:
+        m.sh(f"rm -f {fill}", check=False)
+
+
+def test_agent_stopped_becomes_a_telemetry_gap(installed: Installed, admin: Admin) -> None:
+    """S15-style: the agent stops; a telemetry_gap signal opens, then resolves."""
+    m = installed.machine
+
+    def gap(status: str) -> list[dict[str, Any]]:
+        return [
+            s
+            for s in _signals(admin, kind="telemetry_gap", status=status)
+            if s["source_integration_id"] == installed.iid
+        ]
+
+    m.sh("systemctl stop sentinel-agent")
+    try:
+        opened = eventually(lambda: gap("firing"), timeout=120, every=3)
+        assert opened[0]["payload"]["classification"] in {"host_or_agent", "agent_problem"}
+        assert opened[0]["severity"] in {"warning", "info"}
+    finally:
+        m.sh("systemctl start sentinel-agent")
+    eventually(lambda: not gap("firing"), timeout=120, every=3)
+    assert gap("resolved")
+
+
 # ------------------------------------------------------------------ re-run, uninstall
 
 

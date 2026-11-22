@@ -24,6 +24,7 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 # Insecure placeholder so dev/test work out of the box; rejected in prod.
 _DEV_SECRET_KEY = "dev-only-insecure-secret-key-change-me-0000"  # noqa: S105
 _DEV_INTERNAL_SECRET = "dev-only-internal-auth-secret-change-me-00"  # noqa: S105
+_DEV_GITHUB_SECRET = "dev-only-github-webhook-secret"  # noqa: S105
 
 
 class Settings(BaseSettings):
@@ -97,16 +98,31 @@ class Settings(BaseSettings):
     prober_endpoint: str = "http://ingest.sentinel.internal:4319"
     prober_concurrency: int = Field(default=10, ge=1, le=50)
     prober_config_refresh_s: float = Field(default=30.0, gt=0)
+    # "The prober is alive", sent between check runs. Must stay below the
+    # integration stale threshold (`integration_stale_after_s`).
+    prober_heartbeat_s: float = Field(default=15.0, gt=0)
     # Development only: exact host names the guard lets through although they
     # resolve to private addresses (the demo shop on this machine). Refused in prod.
     prober_allow_hosts: Annotated[list[str], NoDecode] = Field(default_factory=list)
     health_check_min_interval_s: int = Field(default=30, ge=5)
     health_check_max: int = Field(default=50, ge=1, le=1000)
     probe_state_interval_s: float = Field(default=15.0, gt=0)
+
+    # Detection and change ingestion.
+    # The API provisions Alertmanager's API key (scope alerts:write) into this file.
+    alertmanager_key_file: str | None = None
+    # Shared secret of the GitHub webhook (HMAC-SHA256). Unset: the endpoint is off.
+    github_webhook_secret: SecretStr | None = None
+    gap_interval_s: float = Field(default=30.0, gt=0)
     loki_url: str = "http://127.0.0.1:3100"
     jaeger_url: str = "http://127.0.0.1:16686"
     telemetry_timeout_s: float = Field(default=10.0, gt=0, le=60)
     telemetry_max_response_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
+
+    @field_validator("github_webhook_secret", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, value: object) -> object:
+        return None if value in ("", None) else value
 
     @field_validator("prober_allow_hosts", mode="before")
     @classmethod
@@ -126,6 +142,13 @@ class Settings(BaseSettings):
                 raise ValueError("SENTINEL_INTERNAL_AUTH_SECRET must be >= 32 random chars in prod")
             if not self.cookie_secure:
                 raise ValueError("SENTINEL_COOKIE_SECURE must be true in prod")
+            github = (
+                self.github_webhook_secret.get_secret_value()
+                if self.github_webhook_secret
+                else None
+            )
+            if github is not None and (github == _DEV_GITHUB_SECRET or len(github) < 20):
+                raise ValueError("SENTINEL_GITHUB_WEBHOOK_SECRET: >= 20 random chars in prod")
             if self.prober_allow_hosts:
                 raise ValueError("SENTINEL_PROBER_ALLOW_HOSTS is for development only")
             if self.health_check_min_interval_s < 30:
