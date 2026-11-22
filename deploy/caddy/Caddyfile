@@ -23,13 +23,20 @@
 
 		forward_auth api:8000 {
 			uri /internal/ingest-auth
+			lb_try_duration 5s
+			lb_try_interval 250ms
 			header_up X-Sentinel-Internal-Auth {$SENTINEL_INTERNAL_AUTH_SECRET}
 			copy_headers X-Sentinel-Integration-Id X-Sentinel-Integration-Kind
 		}
 
 		# The token stops here: the Collector and the stores never see it.
 		request_header -Authorization
-		reverse_proxy gateway:4318
+		reverse_proxy gateway:4318 {
+			# A brief DNS or restart hiccup must not reject data: retry connecting
+			# (only failed dials are retried, so a request is never sent twice).
+			lb_try_duration 5s
+			lb_try_interval 250ms
+		}
 	}
 
 	# SENTINEL Agent: installer files (public) and the per-integration config
@@ -44,11 +51,17 @@
 	}
 	route @agent_files {
 		request_header -X-Sentinel-Internal-Auth
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			lb_try_duration 5s
+			lb_try_interval 250ms
+		}
 	}
 	route @agent_config {
 		request_header -X-Sentinel-Internal-Auth
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			lb_try_duration 5s
+			lb_try_interval 250ms
+		}
 	}
 
 	# The prober's work list (prober token, checked by the API).
@@ -58,7 +71,10 @@
 	}
 	route @prober_checks {
 		request_header -X-Sentinel-Internal-Auth
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			lb_try_duration 5s
+			lb_try_interval 250ms
+		}
 	}
 
 	respond 404

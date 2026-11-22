@@ -79,6 +79,7 @@ The last two weren't caught because both rules have a second layer: those inputs
 2. **Errors in nested assertions lost their location.** A bad `json_field.path` gave a message without the `assertions.` prefix. Fixed.
 3. **A stopped container was reported as "blocked".** When its DNS name disappears, the error read `blocked: … does not resolve`. It now reads `dns: …`, and creation says "Target does not resolve". Found in the AVIRO demo.
 4. **Exports could lose results.** A failed send dropped the batch. Results are now kept, up to 2,000.
+5. **A brief DNS hiccup made the ingest endpoint answer 502** (found in CI after the PR was opened). One CI run's Amazon Linux job failed: Caddy logged `lookup api: i/o timeout`, at the moment a new container joined the network and Podman's DNS reloaded. The same code had passed minutes before. The API was up, and all four of Caddy's nameservers answer correctly, so it was a transient infrastructure blip. But on a real host it would make SENTINEL reject an agent's data. Caddy now retries a failed *connection* to the API or the gateway for up to 5 s, which is safe for uploads because a request that was sent is never retried. Verified: with the API stopped and restarted a second later, a request through Caddy returned 200 after 1.9 s instead of 502.
 
 ## Decisions worth reviewing
 
