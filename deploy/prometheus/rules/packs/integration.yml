@@ -1,0 +1,26 @@
+# Integration rule pack: the agent's own telemetry. (A source going quiet,
+# "stale", is detected by SENTINEL itself and becomes a telemetry_gap signal.)
+groups:
+  - name: pack-integration
+    interval: 30s
+    rules:
+      - alert: AgentExportFailing
+        expr: >
+          sum by (host_name, sentinel_integration_id) (
+            rate(otelcol_exporter_send_failed_metric_points_total{job="sentinel-agent"}[5m])
+            or rate(otelcol_exporter_send_failed_log_records_total{job="sentinel-agent"}[5m]))
+          > 0
+        for: 10m
+        labels: { severity: warning, pack: integration, entity_type: integration }
+        annotations:
+          summary: "The agent on {{ $labels.host_name }} keeps failing to send data"
+
+      - alert: AgentQueueNearlyFull
+        expr: >
+          max by (host_name, sentinel_integration_id) (
+            otelcol_exporter_queue_size{job="sentinel-agent"} / otelcol_exporter_queue_capacity{job="sentinel-agent"})
+          > 0.8
+        for: 5m
+        labels: { severity: warning, pack: integration, entity_type: integration }
+        annotations:
+          summary: "The agent on {{ $labels.host_name }} is buffering ({{ $value | humanizePercentage }} of its queue)"

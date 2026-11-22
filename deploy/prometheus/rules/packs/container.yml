@@ -1,0 +1,37 @@
+# Container rule pack: Podman or Docker containers seen by the agent (docker_stats).
+groups:
+  - name: pack-container
+    interval: 30s
+    rules:
+      - alert: ContainerRestarted
+        expr: >
+          sum by (host_name, container_name, sentinel_integration_id) (
+            increase(container_restarts_total[10m])) > 0
+        labels: { severity: warning, pack: container, entity_type: container }
+        annotations:
+          summary: "Container {{ $labels.container_name }} on {{ $labels.host_name }} restarted"
+
+      # Only containers with a real limit: an unlimited container reports the
+      # host's memory as its limit.
+      - alert: ContainerMemoryNearLimit
+        expr: >
+          (
+            container_memory_usage_total_bytes / container_memory_usage_limit_bytes > 0.90
+          )
+          and on (host_name, container_name, sentinel_integration_id)
+          (container_memory_usage_limit_bytes < on (host_name) group_left
+            0.95 * sum by (host_name) (system_memory_usage_bytes))
+        for: 2m
+        labels: { severity: warning, pack: container, entity_type: container }
+        annotations:
+          summary: "Container {{ $labels.container_name }} uses {{ $value | humanizePercentage }} of its memory limit"
+
+      - alert: ContainerCpuThrottled
+        expr: >
+          sum by (host_name, container_name, sentinel_integration_id) (rate(container_cpu_throttling_data_throttled_periods_total[5m]))
+          / sum by (host_name, container_name, sentinel_integration_id) (rate(container_cpu_throttling_data_periods_total[5m]))
+          > 0.5
+        for: 10m
+        labels: { severity: warning, pack: container, entity_type: container }
+        annotations:
+          summary: "Container {{ $labels.container_name }} throttled in {{ $value | humanizePercentage }} of CPU periods"

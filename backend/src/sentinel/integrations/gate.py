@@ -22,11 +22,13 @@ from sentinel.config import Settings
 from sentinel.db.engine import session_scope
 from sentinel.db.models import (
     ActorType,
+    EventType,
     IngestToken,
     Integration,
     IntegrationSignalStatus,
     IntegrationStatus,
 )
+from sentinel.events.store import record_event
 from sentinel.integrations.health import compute_health
 from sentinel.integrations.tokens import hash_ingest_token
 from sentinel.security import audit
@@ -248,6 +250,26 @@ class IngestGate:
                 integration.status_reason = health.reason
                 if previous is not health.status:
                     changed.append((integration.name, health.status.value))
+                    await record_event(
+                        db,
+                        type=EventType.INTEGRATION_STATUS,
+                        occurred_at=now,
+                        dedupe_key=(
+                            f"integration_status:{integration.id}:{health.status.value}:"
+                            f"{int(now.timestamp())}"
+                        ),
+                        source_integration_id=integration.id,
+                        severity="warning"
+                        if health.status in (IntegrationStatus.STALE, IntegrationStatus.DEGRADED)
+                        else "info",
+                        payload={
+                            "integration": integration.name,
+                            "kind": integration.kind.value,
+                            "from": previous.value,
+                            "to": health.status.value,
+                            "reason": health.reason,
+                        },
+                    )
                     await audit.append(
                         db,
                         actor_type=ActorType.SYSTEM,

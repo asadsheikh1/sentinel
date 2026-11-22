@@ -1,0 +1,53 @@
+# Service rule pack (RED), over OpenTelemetry HTTP server metrics. Uses the
+# recording rules in ../red.yml plus 1-minute variants for fast detection.
+groups:
+  - name: pack-service-recording
+    interval: 30s
+    rules:
+      - record: service:http_requests:rate1m
+        expr: sum by (job, service_name) (rate(http_server_request_duration_seconds_count[1m]))
+      - record: service:http_errors:rate1m
+        expr: >
+          sum by (job, service_name) (
+            rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[1m]))
+      - record: service:http_error_ratio:rate1m
+        expr: service:http_errors:rate1m / on (job, service_name) service:http_requests:rate1m
+      # The 1-hour baseline of p95 latency and throughput (what "normal" looks like).
+      - record: service:http_latency_p95_seconds:baseline1h
+        expr: avg_over_time(service:http_latency_p95_seconds:5m[1h])
+      - record: service:http_requests:baseline1h
+        expr: avg_over_time(service:http_requests:rate5m[1h])
+
+  - name: pack-service
+    interval: 30s
+    rules:
+      # More than 5% of requests fail, with real traffic (not one failed health check).
+      - alert: ServiceHighErrorRatio
+        expr: >
+          service:http_error_ratio:rate1m > 0.05
+          and on (job, service_name) service:http_requests:rate1m > 0.1
+        for: 1m
+        labels: { severity: critical, pack: service, entity_type: service }
+        annotations:
+          summary: "{{ $labels.service_name }}: {{ $value | humanizePercentage }} of requests fail"
+
+      # Both above a static floor and twice the usual p95: a slow service, not a busy one.
+      - alert: ServiceLatencyHigh
+        expr: >
+          service:http_latency_p95_seconds:5m > 1
+          and on (job, service_name)
+          service:http_latency_p95_seconds:5m > 2 * service:http_latency_p95_seconds:baseline1h
+        for: 3m
+        labels: { severity: warning, pack: service, entity_type: service }
+        annotations:
+          summary: "{{ $labels.service_name }}: p95 latency {{ $value | humanizeDuration }}, over twice its 1-hour baseline"
+
+      # Traffic fell to under 20% of the last hour's (and there was real traffic).
+      - alert: ServiceThroughputCollapse
+        expr: >
+          service:http_requests:rate5m < 0.2 * service:http_requests:baseline1h
+          and on (job, service_name) service:http_requests:baseline1h > 1
+        for: 5m
+        labels: { severity: warning, pack: service, entity_type: service }
+        annotations:
+          summary: "{{ $labels.service_name }}: throughput dropped to {{ $value | humanize }} req/s"

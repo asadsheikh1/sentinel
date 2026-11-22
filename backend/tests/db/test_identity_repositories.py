@@ -141,4 +141,5 @@ async def test_api_keys_lifecycle(db_session: AsyncSession) -> None:
 
     await repo.revoke(key.id, now=NOW)
     assert await repo.get_active_by_hash(HASH_A) is None
-    assert [k.name for k in await repo.list()] == ["ci"]
+    # Other tests share the database (e.g. the system Alertmanager key): only ours counts.
+    assert [k.name for k in await repo.list() if k.key_hash in {HASH_A, HASH_B}] == ["ci"]

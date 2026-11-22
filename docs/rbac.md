@@ -44,10 +44,14 @@ Machine keys (`X-Sentinel-Key`) carry scopes, never user permissions.
 | DELETE | `/api/v1/checks/{check_id}` | `integrations:manage` | admin |
 | GET | `/api/v1/checks/{check_id}` | `integrations:manage` | admin |
 | PATCH | `/api/v1/checks/{check_id}` | `integrations:manage` | admin |
+| GET | `/api/v1/deployments` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/entities` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/entities/{entity_id}` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/entities/{entity_id}/relations` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/events` | `incidents:read` | viewer, responder, approver, admin |
+| POST | `/api/v1/ingest/alertmanager` | API key scope `alerts:write` | API keys only |
+| POST | `/api/v1/ingest/deployments` | API key scope `deployments:write` | API keys only |
+| POST | `/api/v1/ingest/github` | HMAC signature (GitHub webhook secret) | GitHub (signed webhook) |
 | GET | `/api/v1/integrations` | `incidents:read` | viewer, responder, approver, admin |
 | POST | `/api/v1/integrations` | `integrations:manage` | admin |
 | DELETE | `/api/v1/integrations/{integration_id}` | `integrations:manage` | admin |
@@ -60,6 +64,7 @@ Machine keys (`X-Sentinel-Key`) carry scopes, never user permissions.
 | POST | `/api/v1/integrations/{integration_id}/tokens/rotate` | `integrations:manage` | admin |
 | GET | `/api/v1/meta` | any signed-in user | all roles |
 | GET | `/api/v1/prober/checks` | the prober's ingest token | SENTINEL prober (its ingest token) |
+| GET | `/api/v1/signals` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/users` | `users:manage` | admin |
 | POST | `/api/v1/users` | `users:manage` | admin |
 | PATCH | `/api/v1/users/{user_id}` | `users:manage` | admin |

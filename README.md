@@ -6,7 +6,7 @@ SENTINEL connects to your systems, detects incidents, and explains the likely ro
 - **Safe by design.** Code runs only in isolated rootless [Podman](https://podman.io) sandboxes. Nothing is merged or deployed automatically.
 - **Measured, not claimed.** AI quality is evaluated against fault-injection scenarios on the [AVIRO demo shop](https://github.com/asadsheikh1/aviro-shop).
 
-> **Status:** early development. Step 9 of 35 (external health checks with an SSRF-guarded prober). See the [roadmap](docs/4-plan/1-roadmap.md).
+> **Status:** early development. Step 10 of 35 (detection: rule packs, signals, deployments and GitHub events). See the [roadmap](docs/4-plan/1-roadmap.md).
 
 ## Quickstart (macOS, Apple Silicon)
 

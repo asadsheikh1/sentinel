@@ -29,6 +29,8 @@ EXPECTED_TABLES = {
     "ingest_tokens",
     "health_checks",
     "events",
+    "signals",
+    "deployments",
     "integration_signal_status",
     "entities",
     "entity_relations",

@@ -9,4 +9,5 @@ description = "Deliberate fake secrets in redaction test fixtures"
 paths = [
   '''^backend/tests/fixtures/redaction/corpus\.yaml$''',
   '''^backend/tests/fixtures/telemetry/aviro\.json$''',
+  '''^backend/tests/fixtures/webhooks/github_push\.json$''', # a fake token in a commit message
 ]

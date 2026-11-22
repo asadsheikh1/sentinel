@@ -39,6 +39,28 @@
 
 **Indexes:** `ix_audit_log_target_type_target_id` (audit_log.target_type, audit_log.target_id); `ix_audit_log_ts` (audit_log.ts)
 
+## `deployments`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `event_id` | UUID | no |  | unique → `events.id` ON DELETE CASCADE |
+| `entity_id` | UUID | yes |  | → `entities.id` ON DELETE SET NULL |
+| `service_name` | TEXT | no |  |  |
+| `environment` | TEXT | no | `dev` |  |
+| `version` | TEXT | yes |  |  |
+| `image_ref` | TEXT | yes |  |  |
+| `commit_sha` | TEXT | yes |  |  |
+| `previous_commit_sha` | TEXT | yes |  |  |
+| `deployed_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `deployed_by` | TEXT | yes |  |  |
+| `source` | TEXT | no |  |  |
+| `status` | TEXT | no |  |  |
+| `id` | UUID | no | app: `uuid7()` | PK |
+
+**Checks:** `commit_sha IS NULL OR commit_sha ~ '^[0-9a-f]{7,64}$'`; `source IN ('ci','script','rollback','github')`; `status IN ('succeeded','failed','in_progress')`
+
+**Indexes:** `ix_deployments_service_name_deployed_at` (deployments.service_name, deployments.deployed_at)
+
 ## `entities`
 
 | Column | Type | Null | Default | Key / reference |
@@ -203,6 +225,31 @@
 **Checks:** `char_length(token_hash) = 64`
 
 **Indexes:** `ix_sessions_user_id` (sessions.user_id)
+
+## `signals`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `kind` | signal_kind | no |  |  |
+| `status` | signal_status | no |  |  |
+| `severity` | TEXT | no |  |  |
+| `title` | TEXT | no |  |  |
+| `entity_id` | UUID | yes |  | → `entities.id` ON DELETE SET NULL |
+| `service_name` | TEXT | yes |  |  |
+| `source_integration_id` | UUID | yes |  | → `integrations.id` ON DELETE SET NULL |
+| `fingerprint` | TEXT | no |  |  |
+| `labels` | JSONB | no | `'{}'::jsonb` |  |
+| `payload` | JSONB | no | `'{}'::jsonb` |  |
+| `starts_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `ends_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `received_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `dedupe_key` | TEXT | no |  | unique |
+| `id` | UUID | no | app: `uuid7()` | PK |
+
+**Checks:** `severity IN ('critical','warning','info')`
+
+**Indexes:** `ix_signals_entity_id_starts_at` (signals.entity_id, signals.starts_at); `ix_signals_service_name_starts_at` (signals.service_name, signals.starts_at); `ix_signals_status_starts_at` (signals.status, signals.starts_at)
 
 ## `user_invites`
 

@@ -1,0 +1,36 @@
+# promtool tests for rules/packs/database.yml
+rule_files:
+  - ../../rules/packs/database.yml
+evaluation_interval: 30s
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'postgresql_backends{host_name="db1", postgresql_database_name="aviro", sentinel_integration_id="i1"}'
+        values: "90x15"
+      - series: 'postgresql_connection_max{host_name="db1", sentinel_integration_id="i1"}'
+        values: "100x15"
+      - series: 'postgresql_backends{host_name="db2", postgresql_database_name="other", sentinel_integration_id="i2"}'
+        values: "20x15"
+      - series: 'postgresql_connection_max{host_name="db2", sentinel_integration_id="i2"}'
+        values: "100x15"
+      - series: 'postgresql_deadlocks_total{host_name="db1", postgresql_database_name="aviro", sentinel_integration_id="i1"}'
+        values: "0 0 0 2x12"
+      - series: 'postgresql_replication_data_delay_bytes{host_name="db1", sentinel_integration_id="i1"}'
+        values: "209715200x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DatabaseConnectionsHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: database, entity_type: database, host_name: db1, postgresql_database_name: aviro, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "PostgreSQL on db1: 90% of max connections in use" }
+      - eval_time: 5m
+        alertname: DatabaseDeadlocks
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: database, entity_type: database, host_name: db1, postgresql_database_name: aviro, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "Deadlocks in aviro on db1" }
+      - eval_time: 10m
+        alertname: DatabaseReplicationLag
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: database, entity_type: database, host_name: db1, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "Replication on db1 is 200MiB behind" }

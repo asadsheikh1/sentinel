@@ -89,7 +89,7 @@ stack-up-fast: ## Same, with short health intervals (used by test-gateway)
 	$(COMPOSE_OBS) build
 	SENTINEL_INTEGRATION_FLUSH_INTERVAL_S=1 SENTINEL_INTEGRATION_STALE_AFTER_S=8 \
 	SENTINEL_ENTITY_DISCOVERY_INTERVAL_S=3 SENTINEL_HEALTH_CHECK_MIN_INTERVAL_S=5 \
-	SENTINEL_PROBE_STATE_INTERVAL_S=2 SENTINEL_PROBER_CONFIG_REFRESH_S=3 \
+	SENTINEL_PROBE_STATE_INTERVAL_S=2 SENTINEL_PROBER_CONFIG_REFRESH_S=3 SENTINEL_GAP_INTERVAL_S=2 \
 	$(COMPOSE_OBS) up -d --force-recreate
 	$(WAIT_MIGRATE)
 
@@ -106,9 +106,12 @@ test-agent: ## Install the SENTINEL Agent on a disposable Ubuntu 24.04 systemd m
 test-obs: ## Push synthetic OTLP into each store and query it back (needs obs-up)
 	$(BACKEND) uv run pytest -m observability -v
 
-test-rules: ## Unit-test the Prometheus recording rules with promtool
+RULE_PACK_TESTS := host_test.yml container_test.yml service_test.yml database_test.yml endpoint_test.yml integration_test.yml
+
+test-rules: ## Unit-test the Prometheus recording and alert rules (rule packs) with promtool
 	podman run --rm --entrypoint promtool -v ./deploy/prometheus:/p:ro,Z $(PROM_IMAGE) test rules /p/tests/red_test.yml
-	podman run --rm --entrypoint promtool -v ./deploy/prometheus:/p:ro,Z $(PROM_IMAGE) check rules /p/rules/red.yml
+	podman run --rm --entrypoint promtool -v ./deploy/prometheus:/p:ro,Z -w /p/tests/packs $(PROM_IMAGE) test rules $(RULE_PACK_TESTS)
+	podman run --rm --entrypoint promtool -v ./deploy/prometheus:/p:ro,Z $(PROM_IMAGE) check rules /p/rules/red.yml /p/rules/packs/host.yml /p/rules/packs/container.yml /p/rules/packs/service.yml /p/rules/packs/database.yml /p/rules/packs/endpoint.yml /p/rules/packs/integration.yml
 
 logs: ## Follow container logs
 	$(COMPOSE) logs -f

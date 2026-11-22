@@ -342,7 +342,8 @@ def test_probe_state_changes_become_events(settings: Settings) -> None:
         return await probe_state_pass(factory, query, gate, now=now)  # type: ignore[arg-type]
 
     def run(samples: list[tuple[datetime, int]], now: datetime) -> Any:
-        return _run(settings, lambda f: step(f, samples, now))
+        changes = _run(settings, lambda f: step(f, samples, now))
+        return [c for c in changes if c[0] == check["name"]]  # other tests' checks too
 
     assert run([], at[0]) == []  # no results yet: stays unknown
     up = [(at[0], 1), (at[1], 1)]

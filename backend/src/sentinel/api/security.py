@@ -10,6 +10,7 @@ Every route must declare exactly one access rule by depending on one of:
 * ``ingest_token()``   — a SENTINEL Agent, with the ingest token of the integration
                          named in the path (``{integration_id}``)
 * ``prober_token()``   — SENTINEL's prober, with its own ingest token
+* ``github_signature()`` — a GitHub webhook signed with the shared secret
 
 The dependency callables carry an ``ACCESS_ATTR`` marker. A test walks every
 route in the app and fails if one has no marker, so a new endpoint can't ship
@@ -30,6 +31,7 @@ from sentinel.auth.tokens import constant_time_equals
 from sentinel.db.models import ActorType
 from sentinel.integrations.gate import IngestGate, TokenInfo
 from sentinel.integrations.tokens import bearer_token
+from sentinel.security.webhooks import signature_valid
 
 SESSION_COOKIE = "sentinel_session"
 CSRF_COOKIE = "sentinel_csrf"
@@ -42,7 +44,9 @@ ACCESS_ATTR = "__sentinel_access__"
 
 @dataclass(frozen=True)
 class Access:
-    kind: Literal["public", "authenticated", "permission", "scope", "internal", "ingest", "prober"]
+    kind: Literal[
+        "public", "authenticated", "permission", "scope", "internal", "ingest", "prober", "hmac"
+    ]
     value: str | None = None
 
     def describe(self) -> str:
@@ -54,6 +58,7 @@ class Access:
             "internal": "internal proxy secret",
             "ingest": "the integration's ingest token",
             "prober": "the prober's ingest token",
+            "hmac": "HMAC signature (GitHub webhook secret)",
         }[self.kind]
 
 
@@ -196,6 +201,33 @@ async def _ingest_principal(request: Request, allowed: Callable[[TokenInfo], boo
             headers={"Retry-After": str(retry)},
         )
     return info
+
+
+MAX_WEBHOOK_BYTES = 5 * 1024 * 1024
+
+
+def github_signature() -> Callable[[Request], Awaitable[bytes]]:
+    """``X-Hub-Signature-256`` must be the HMAC-SHA256 of the raw body. Returns the body."""
+
+    async def dep(request: Request) -> bytes:
+        secret = request.app.state.settings.github_webhook_secret
+        if secret is None:  # 401 like any unauthenticated call; the detail says why
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "The GitHub webhook is not configured."
+            )
+        declared = request.headers.get("content-length")
+        if declared is not None and declared.isdigit() and int(declared) > MAX_WEBHOOK_BYTES:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Payload too large.")
+        body = await request.body()
+        if len(body) > MAX_WEBHOOK_BYTES:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Payload too large.")
+        if not signature_valid(
+            secret.get_secret_value(), body, request.headers.get("X-Hub-Signature-256")
+        ):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid signature.")
+        return body
+
+    return _mark(dep, Access("hmac"))
 
 
 def actor_for(request: Request, principal: SessionPrincipal | KeyPrincipal | None) -> Actor:

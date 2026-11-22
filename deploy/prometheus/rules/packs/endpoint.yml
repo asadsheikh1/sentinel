@@ -1,0 +1,30 @@
+# Endpoint rule pack: external health checks (the SSRF-guarded prober).
+groups:
+  - name: pack-endpoint
+    interval: 30s
+    rules:
+      # Every result in the last 2 minutes failed, and there were at least 2.
+      - alert: EndpointDown
+        expr: >
+          max by (sentinel_check_id, sentinel_check_name, server_address) (max_over_time(probe_success[2m])) == 0
+          and on (sentinel_check_id)
+          sum by (sentinel_check_id) (count_over_time(probe_success[2m])) >= 2
+        labels: { severity: critical, pack: endpoint, entity_type: endpoint }
+        annotations:
+          summary: "{{ $labels.sentinel_check_name }} ({{ $labels.server_address }}) is down"
+
+      - alert: EndpointSlow
+        expr: >
+          avg by (sentinel_check_id, sentinel_check_name, server_address) (avg_over_time(probe_duration_seconds[5m])) > 5
+        for: 5m
+        labels: { severity: warning, pack: endpoint, entity_type: endpoint }
+        annotations:
+          summary: "{{ $labels.sentinel_check_name }} takes {{ $value | humanizeDuration }} on average"
+
+      - alert: EndpointCertExpiringSoon
+        expr: >
+          min by (sentinel_check_id, sentinel_check_name, server_address) (last_over_time(tls_cert_expiry_seconds[10m])) - time()
+          < 14 * 86400
+        labels: { severity: warning, pack: endpoint, entity_type: endpoint }
+        annotations:
+          summary: "The certificate of {{ $labels.server_address }} expires in {{ $value | humanizeDuration }}"

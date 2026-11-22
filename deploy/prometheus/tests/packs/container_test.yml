@@ -1,0 +1,46 @@
+# promtool tests for rules/packs/container.yml
+rule_files:
+  - ../../rules/packs/container.yml
+evaluation_interval: 30s
+
+tests:
+  - interval: 1m
+    input_series:
+      # inventory restarts once at minute 3 (the memory-leak scenario, S06)
+      - series: 'container_restarts_total{host_name="h1", container_name="aviro_inventory_1", sentinel_integration_id="i1"}'
+        values: "0 0 0 1x20"
+      - series: 'container_restarts_total{host_name="h1", container_name="aviro_orders_1", sentinel_integration_id="i1"}'
+        values: "0x23"
+      # host h1 has 10 GB; inventory is limited to 1 GB and uses 95%;
+      # orders is unlimited (reports the host's memory as its limit) and uses 95% of that
+      - series: 'system_memory_usage_bytes{host_name="h1", sentinel_integration_id="i1", state="used"}'
+        values: "10000x23"
+      - series: 'container_memory_usage_limit_bytes{host_name="h1", container_name="aviro_inventory_1", sentinel_integration_id="i1"}'
+        values: "1000x23"
+      - series: 'container_memory_usage_total_bytes{host_name="h1", container_name="aviro_inventory_1", sentinel_integration_id="i1"}'
+        values: "950x23"
+      - series: 'container_memory_usage_limit_bytes{host_name="h1", container_name="aviro_orders_1", sentinel_integration_id="i1"}'
+        values: "10000x23"
+      - series: 'container_memory_usage_total_bytes{host_name="h1", container_name="aviro_orders_1", sentinel_integration_id="i1"}'
+        values: "9500x23"
+      # payments throttled in 60% of CPU periods
+      - series: 'container_cpu_throttling_data_throttled_periods_total{host_name="h1", container_name="aviro_payments_1", sentinel_integration_id="i1"}'
+        values: "0+60x23"
+      - series: 'container_cpu_throttling_data_periods_total{host_name="h1", container_name="aviro_payments_1", sentinel_integration_id="i1"}'
+        values: "0+100x23"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ContainerRestarted
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: container, entity_type: container, host_name: h1, container_name: aviro_inventory_1, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "Container aviro_inventory_1 on h1 restarted" }
+      - eval_time: 5m
+        alertname: ContainerMemoryNearLimit
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: container, entity_type: container, host_name: h1, container_name: aviro_inventory_1, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "Container aviro_inventory_1 uses 95% of its memory limit" }
+      - eval_time: 20m
+        alertname: ContainerCpuThrottled
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: container, entity_type: container, host_name: h1, container_name: aviro_payments_1, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "Container aviro_payments_1 throttled in 60% of CPU periods" }

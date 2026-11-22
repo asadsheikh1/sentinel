@@ -9,7 +9,6 @@ Each check's own (``http_check``) integration also counts as having sent
 metrics when its results are fresh, which drives that integration's health.
 """
 
-import uuid
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -18,11 +17,11 @@ from typing import Any
 
 import structlog
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from sentinel.db.engine import session_scope
-from sentinel.db.models import Event, EventType, HealthCheck, ProbeState
+from sentinel.db.models import EventType, HealthCheck, ProbeState
+from sentinel.events.store import record_event
 from sentinel.integrations.entities import Query
 from sentinel.integrations.gate import IngestGate
 from sentinel.security.redaction import redact_text
@@ -78,15 +77,14 @@ async def _record_event(
 ) -> None:
     if decision.at is None:  # unknown states are not events
         return
-    severity = "critical" if decision.state is ProbeState.DOWN else "info"
-    stmt = insert(Event).values(
-        id=uuid.uuid4(),
+    await record_event(
+        db,
         type=EventType.PROBE_STATE,
+        occurred_at=decision.at,
+        dedupe_key=f"probe_state:{check.id}:{decision.state.value}:{int(decision.at.timestamp())}",
         source_integration_id=check.integration_id,
         entity_ids=[check.entity_id] if check.entity_id else [],
-        occurred_at=decision.at,
-        severity=severity,
-        dedupe_key=f"probe_state:{check.id}:{decision.state.value}:{int(decision.at.timestamp())}",
+        severity="critical" if decision.state is ProbeState.DOWN else "info",
         payload={
             "check_id": str(check.id),
             "name": check.name,
@@ -96,7 +94,6 @@ async def _record_event(
             "to": decision.state.value,
         },
     )
-    await db.execute(stmt.on_conflict_do_nothing(index_elements=["dedupe_key"]))
 
 
 async def probe_state_pass(
@@ -122,8 +119,11 @@ async def probe_state_pass(
             )
             if decision.at is not None:
                 check.last_result_at = decision.at
-                if gate is not None and now - decision.at < timedelta(minutes=5):
-                    gate.mark_seen(check.integration_id, "metrics", decision.at)
+                # Fresh for *this check's* cadence counts as data arriving now: a
+                # check every 10 minutes is not "stale" between its runs.
+                fresh_for = timedelta(seconds=3 * check.interval_s + check.timeout_s)
+                if gate is not None and now - decision.at <= fresh_for:
+                    gate.mark_seen(check.integration_id, "metrics", now)
             if decision.state is check.state:
                 continue
             previous = check.state

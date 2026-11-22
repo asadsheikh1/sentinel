@@ -1,0 +1,29 @@
+# Database rule pack: PostgreSQL via the agent's postgresql receiver (Should;
+# the receiver isn't configured yet, so these stay silent until it is).
+groups:
+  - name: pack-database
+    interval: 30s
+    rules:
+      - alert: DatabaseConnectionsHigh
+        expr: >
+          sum by (host_name, postgresql_database_name, sentinel_integration_id) (postgresql_backends)
+          / on (host_name, sentinel_integration_id) group_left
+          max by (host_name, sentinel_integration_id) (postgresql_connection_max)
+          > 0.85
+        for: 5m
+        labels: { severity: warning, pack: database, entity_type: database }
+        annotations:
+          summary: "PostgreSQL on {{ $labels.host_name }}: {{ $value | humanizePercentage }} of max connections in use"
+
+      - alert: DatabaseDeadlocks
+        expr: sum by (host_name, postgresql_database_name, sentinel_integration_id) (increase(postgresql_deadlocks_total[10m])) > 0
+        labels: { severity: warning, pack: database, entity_type: database }
+        annotations:
+          summary: "Deadlocks in {{ $labels.postgresql_database_name }} on {{ $labels.host_name }}"
+
+      - alert: DatabaseReplicationLag
+        expr: max by (host_name, sentinel_integration_id) (postgresql_replication_data_delay_bytes) > 100 * 1024 * 1024
+        for: 5m
+        labels: { severity: warning, pack: database, entity_type: database }
+        annotations:
+          summary: "Replication on {{ $labels.host_name }} is {{ $value | humanize1024 }}B behind"

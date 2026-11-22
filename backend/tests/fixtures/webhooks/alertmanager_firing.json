@@ -1,0 +1,47 @@
+{
+  "receiver": "sentinel",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "ServiceHighErrorRatio",
+        "entity_type": "service",
+        "job": "aviro/orders",
+        "pack": "service",
+        "service_name": "orders",
+        "severity": "critical"
+      },
+      "annotations": { "summary": "orders: 20% of requests fail" },
+      "startsAt": "2026-11-22T09:00:30Z",
+      "endsAt": "2026-11-22T09:06:30Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=service%3Ahttp_error_ratio%3Arate1m",
+      "fingerprint": "4b5f9c2d1e3a7f60"
+    },
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "HostFilesystemFull",
+        "device": "/dev/vda4",
+        "entity_type": "host",
+        "host_name": "aviro-host",
+        "mountpoint": "/",
+        "pack": "host",
+        "sentinel_integration_id": "01a20000-0000-7000-8000-000000000001",
+        "severity": "critical"
+      },
+      "annotations": { "summary": "/ on aviro-host is 96% full" },
+      "startsAt": "2026-11-22T09:01:00Z",
+      "endsAt": "2026-11-22T09:07:00Z",
+      "generatorURL": "http://prometheus:9090/graph",
+      "fingerprint": "9a8b7c6d5e4f3a21"
+    }
+  ],
+  "groupLabels": { "alertname": "ServiceHighErrorRatio" },
+  "commonLabels": { "severity": "critical" },
+  "commonAnnotations": {},
+  "externalURL": "http://alertmanager:9093",
+  "version": "4",
+  "groupKey": "{}:{alertname=\"ServiceHighErrorRatio\"}",
+  "truncatedAlerts": 0
+}

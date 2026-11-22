@@ -41,6 +41,8 @@ services:
     volumes:
       - amdata:/alertmanager
       - ../alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro,Z
+      # Its API key for SENTINEL (alerts:write), written by the API.
+      - alertmanager-key:/etc/alertmanager/secrets:ro
     ports: ["127.0.0.1:9093:9093"]
     mem_limit: 128m
     healthcheck:
@@ -144,11 +146,16 @@ services:
       SENTINEL_PROBER_ALLOW_HOSTS: ${SENTINEL_PROBER_ALLOW_HOSTS:-aviro_gateway_1,sentinel-probe-target}
       SENTINEL_HEALTH_CHECK_MIN_INTERVAL_S: ${SENTINEL_HEALTH_CHECK_MIN_INTERVAL_S:-30}
       SENTINEL_PROBE_STATE_INTERVAL_S: ${SENTINEL_PROBE_STATE_INTERVAL_S:-15}
+      SENTINEL_ALERTMANAGER_KEY_FILE: /run/sentinel-alertmanager/api-key
+      SENTINEL_GITHUB_WEBHOOK_SECRET: ${SENTINEL_GITHUB_WEBHOOK_SECRET:-dev-only-github-webhook-secret}
+      SENTINEL_GAP_INTERVAL_S: ${SENTINEL_GAP_INTERVAL_S:-30}
     # Development: serve agent/ from the checkout, so installer edits need no rebuild.
     volumes:
       - ../../agent:/app/agent:ro,Z
       # The API writes the prober's token here; only the prober mounts it (read-only).
       - prober-token:/run/sentinel-prober:U
+      # ...and Alertmanager's API key here.
+      - alertmanager-key:/run/sentinel-alertmanager:U
     networks: [default, telemetry]
 
 networks:
@@ -167,3 +174,4 @@ volumes:
   lokidata:
   jaegerdata:
   prober-token:
+  alertmanager-key:

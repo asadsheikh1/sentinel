@@ -6,7 +6,6 @@ that only the API (write) and the prober (read) mount. On start-up the API keeps
 a still-valid token and issues a new one otherwise (the old one is revoked).
 """
 
-import os
 import uuid
 from pathlib import Path
 
@@ -20,23 +19,11 @@ from sentinel.db.engine import session_scope
 from sentinel.db.models import IngestToken, Integration, IntegrationKind
 from sentinel.integrations.service import IntegrationService
 from sentinel.integrations.tokens import hash_ingest_token, is_well_formed
+from sentinel.security.secret_files import read_secret, write_secret
 
 log = structlog.get_logger("sentinel.checks")
 PROBER_NAME = "SENTINEL prober"
 _ACTOR = Actor.system("prober-provisioning")
-
-
-def _write_secret(path: Path, token: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(token + "\n")
-    os.replace(tmp, path)  # atomic: the prober never reads half a token
-
-
-def _read_secret(path: Path) -> str:
-    return path.read_text(encoding="utf-8").strip() if path.exists() else ""
 
 
 async def _valid(
@@ -78,13 +65,13 @@ async def ensure_prober(
                 actor=_ACTOR,
                 created_by=None,
             )
-            _write_secret(path, token)
+            write_secret(path, token)
             log.info("prober_provisioned", integration_id=str(integration.id))
             return integration.id
-        current = _read_secret(path)  # a tiny local file, once at start-up
+        current = read_secret(path)  # a tiny local file, once at start-up
         if current and await _valid(db, settings, integration.id, current):
             return integration.id
         token = await svc.rotate_token(integration, actor=_ACTOR)
-        _write_secret(path, token)
+        write_secret(path, token)
         log.info("prober_token_rotated", integration_id=str(integration.id))
         return integration.id

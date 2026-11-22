@@ -1,0 +1,82 @@
+# promtool tests for rules/packs/service.yml (uses the RED recording rules).
+rule_files:
+  - ../../rules/red.yml
+  - ../../rules/packs/service.yml
+evaluation_interval: 30s
+
+tests:
+  - name: 5xx ratio (S01-like), with a healthy service and a quiet one
+    interval: 30s
+    input_series:
+      # orders: 10 req/s, then from minute 5 one in five fails
+      - series: 'http_server_request_duration_seconds_count{job="aviro/orders", service_name="orders", http_response_status_code="201"}'
+        values: "0+300x10 3000+240x20"
+      - series: 'http_server_request_duration_seconds_count{job="aviro/orders", service_name="orders", http_response_status_code="500"}'
+        values: "0x10 0+60x20"
+      # gateway: healthy
+      - series: 'http_server_request_duration_seconds_count{job="aviro/gateway", service_name="gateway", http_response_status_code="200"}'
+        values: "0+300x30"
+      # admin: 1 request every 2 minutes, all failing (not real traffic)
+      - series: 'http_server_request_duration_seconds_count{job="aviro/admin", service_name="admin", http_response_status_code="500"}'
+        values: "0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4 5 5 5 5 6 6 6 6 7 7 7"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ServiceHighErrorRatio
+        exp_alerts: []
+      # Fault starts at 5m; firing by 7m30s (1m window + 1m "for"): well under 3 minutes.
+      - eval_time: 7m30s
+        alertname: ServiceHighErrorRatio
+        exp_alerts:
+          - exp_labels: { severity: critical, pack: service, entity_type: service, job: aviro/orders, service_name: orders }
+            exp_annotations: { summary: "orders: 20% of requests fail" }
+
+  - name: latency regression vs. a service that is always slow
+    interval: 1m
+    input_series:
+      # inventory: an hour of fast requests (all <= 0.25 s), then everything takes 1-2.5 s
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/inventory", service_name="inventory", le="0.25"}'
+        values: "0+600x60 36000x15"
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/inventory", service_name="inventory", le="1"}'
+        values: "0+600x60 36000x15"
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/inventory", service_name="inventory", le="2.5"}'
+        values: "0+600x75"
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/inventory", service_name="inventory", le="+Inf"}'
+        values: "0+600x75"
+      # reports: always 1-2.5 s (above the floor, but that's normal for it)
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/reports", service_name="reports", le="1"}'
+        values: "0x75"
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/reports", service_name="reports", le="2.5"}'
+        values: "0+600x75"
+      - series: 'http_server_request_duration_seconds_bucket{job="aviro/reports", service_name="reports", le="+Inf"}'
+        values: "0+600x75"
+    alert_rule_test:
+      - eval_time: 58m
+        alertname: ServiceLatencyHigh
+        exp_alerts: []
+      - eval_time: 72m
+        alertname: ServiceLatencyHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: service, entity_type: service, job: aviro/inventory, service_name: inventory }
+            exp_annotations: { summary: "inventory: p95 latency 2.425s, over twice its 1-hour baseline" }
+
+  - name: throughput collapse vs. a traffic spike (S08)
+    interval: 1m
+    input_series:
+      # orders: 10 req/s for an hour, then 1 req/s
+      - series: 'http_server_request_duration_seconds_count{job="aviro/orders", service_name="orders", http_response_status_code="201"}'
+        values: "0+600x60 36000+60x20"
+      # gateway: 10 req/s, then a 3x spike
+      - series: 'http_server_request_duration_seconds_count{job="aviro/gateway", service_name="gateway", http_response_status_code="200"}'
+        values: "0+600x60 36000+1800x20"
+    alert_rule_test:
+      - eval_time: 75m
+        alertname: ServiceThroughputCollapse
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: service, entity_type: service, job: aviro/orders, service_name: orders }
+            exp_annotations: { summary: "orders: throughput dropped to 1 req/s" }
+      - eval_time: 75m
+        alertname: ServiceHighErrorRatio
+        exp_alerts: []
+      - eval_time: 75m
+        alertname: ServiceLatencyHigh
+        exp_alerts: []

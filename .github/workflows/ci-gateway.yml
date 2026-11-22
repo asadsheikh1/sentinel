@@ -21,7 +21,7 @@ jobs:
   gateway:
     name: ingestion gateway end to end (rootless Podman)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3

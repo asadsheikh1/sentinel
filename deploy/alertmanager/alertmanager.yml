@@ -1,12 +1,24 @@
-# Alertmanager. Until Step 10 (rule packs + webhook ingestion) alerts go
-# nowhere; Step 10 replaces the receiver with a webhook to
-# sentinel-api /api/v1/ingest/alertmanager authenticated with an API key.
+# Alertmanager: rule-pack alerts go to SENTINEL, which stores them as signals.
+#
+# The API key (scope alerts:write only) is provisioned by the API into a volume
+# that only Alertmanager mounts; it is read on every delivery, so rotation needs
+# no restart. SENTINEL de-duplicates, so Alertmanager's retries and repeats are
+# harmless.
 route:
-  receiver: "null"
-  group_by: ["alertname", "job", "service_name"]
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
+  receiver: sentinel
+  # One group per entity, so one service's alerts don't wait for another's.
+  group_by: ["alertname", "service_name", "host_name", "container_name", "sentinel_check_id", "sentinel_integration_id"]
+  group_wait: 10s # detection latency budget (S01: signal within 3 minutes)
+  group_interval: 1m
+  repeat_interval: 1h
 
 receivers:
-  - name: "null"
+  - name: sentinel
+    webhook_configs:
+      - url: http://api:8000/api/v1/ingest/alertmanager
+        send_resolved: true
+        max_alerts: 0
+        http_config:
+          http_headers:
+            X-Sentinel-Key:
+              files: [/etc/alertmanager/secrets/api-key]

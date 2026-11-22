@@ -40,6 +40,7 @@ storage:
 
 rule_files:
   - /etc/prometheus/rules/*.yml
+  - /etc/prometheus/rules/packs/*.yml # detection rule packs per entity type (Step 10)
 
 alerting:
   alertmanagers:

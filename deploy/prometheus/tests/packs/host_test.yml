@@ -1,0 +1,122 @@
+# promtool tests for rules/packs/host.yml. Host h1 has the problem, h2 is healthy.
+rule_files:
+  - ../../rules/packs/host.yml
+evaluation_interval: 30s
+
+tests:
+  - name: cpu, memory, disk, inodes, network
+    interval: 1m
+    input_series:
+      # CPU: h1 95% busy, h2 50% (counters in CPU-seconds per minute)
+      - series: 'system_cpu_time_seconds_total{host_name="h1", sentinel_integration_id="i1", cpu="cpu0", state="idle"}'
+        values: "0+3x30"
+      - series: 'system_cpu_time_seconds_total{host_name="h1", sentinel_integration_id="i1", cpu="cpu0", state="user"}'
+        values: "0+57x30"
+      - series: 'system_cpu_time_seconds_total{host_name="h2", sentinel_integration_id="i2", cpu="cpu0", state="idle"}'
+        values: "0+30x30"
+      - series: 'system_cpu_time_seconds_total{host_name="h2", sentinel_integration_id="i2", cpu="cpu0", state="user"}'
+        values: "0+30x30"
+      # Memory: h1 7% available, h2 60%
+      - series: 'system_memory_usage_bytes{host_name="h1", sentinel_integration_id="i1", state="free"}'
+        values: "5x30"
+      - series: 'system_memory_usage_bytes{host_name="h1", sentinel_integration_id="i1", state="cached"}'
+        values: "2x30"
+      - series: 'system_memory_usage_bytes{host_name="h1", sentinel_integration_id="i1", state="used"}'
+        values: "93x30"
+      - series: 'system_memory_usage_bytes{host_name="h2", sentinel_integration_id="i2", state="free"}'
+        values: "60x30"
+      - series: 'system_memory_usage_bytes{host_name="h2", sentinel_integration_id="i2", state="used"}'
+        values: "40x30"
+      # Filesystem: h1 95% used, h2 50%
+      - series: 'system_filesystem_usage_bytes{host_name="h1", sentinel_integration_id="i1", device="/dev/vda1", mountpoint="/", state="used"}'
+        values: "95x30"
+      - series: 'system_filesystem_usage_bytes{host_name="h1", sentinel_integration_id="i1", device="/dev/vda1", mountpoint="/", state="free"}'
+        values: "5x30"
+      - series: 'system_filesystem_usage_bytes{host_name="h2", sentinel_integration_id="i2", device="/dev/vda1", mountpoint="/", state="used"}'
+        values: "50x30"
+      - series: 'system_filesystem_usage_bytes{host_name="h2", sentinel_integration_id="i2", device="/dev/vda1", mountpoint="/", state="free"}'
+        values: "50x30"
+      # Inodes: h1 92% used
+      - series: 'system_filesystem_inodes_usage{host_name="h1", sentinel_integration_id="i1", device="/dev/vda1", mountpoint="/", state="used"}'
+        values: "92x30"
+      - series: 'system_filesystem_inodes_usage{host_name="h1", sentinel_integration_id="i1", device="/dev/vda1", mountpoint="/", state="free"}'
+        values: "8x30"
+      - series: 'system_filesystem_inodes_usage{host_name="h2", sentinel_integration_id="i2", device="/dev/vda1", mountpoint="/", state="used"}'
+        values: "10x30"
+      - series: 'system_filesystem_inodes_usage{host_name="h2", sentinel_integration_id="i2", device="/dev/vda1", mountpoint="/", state="free"}'
+        values: "90x30"
+      # Network errors: h1 2/s, h2 none
+      - series: 'system_network_errors_total{host_name="h1", sentinel_integration_id="i1", device="eth0", direction="receive"}'
+        values: "0+120x30"
+      - series: 'system_network_errors_total{host_name="h2", sentinel_integration_id="i2", device="eth0", direction="receive"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HostHighCpu
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: host, entity_type: host, host_name: h1, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "CPU on h1 above 90% for 10 minutes (95%)" }
+      - eval_time: 8m # 5 m of "for" not yet complete at 4m
+        alertname: HostMemoryLow
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: host, entity_type: host, host_name: h1, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "Available memory on h1 below 10% (7%)" }
+      - eval_time: 4m
+        alertname: HostFilesystemFull
+        exp_alerts:
+          - exp_labels: { severity: critical, pack: host, entity_type: host, host_name: h1, sentinel_integration_id: i1, device: /dev/vda1, mountpoint: / }
+            exp_annotations: { summary: "/ on h1 is 95% full" }
+      - eval_time: 8m
+        alertname: HostInodesHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: host, entity_type: host, host_name: h1, sentinel_integration_id: i1, device: /dev/vda1, mountpoint: / }
+            exp_annotations: { summary: "Inodes on / (h1) 92% used" }
+      - eval_time: 20m
+        alertname: HostNetworkErrors
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: host, entity_type: host, host_name: h1, sentinel_integration_id: i1, device: eth0 }
+            exp_annotations: { summary: "Network errors on eth0 (h1): 2/s" }
+      # Not yet: CPU needs 10 minutes.
+      - eval_time: 8m
+        alertname: HostHighCpu
+        exp_alerts: []
+
+  - name: disk filling up fast (the disk-fill fault), and a steady disk
+    interval: 1m
+    input_series:
+      # h1: 60% used, growing 1%/min -> full in 40 min
+      - series: 'system_filesystem_usage_bytes{host_name="h1", sentinel_integration_id="i1", device="/dev/vda1", mountpoint="/", state="used"}'
+        values: "60+1x35"
+      - series: 'system_filesystem_usage_bytes{host_name="h1", sentinel_integration_id="i1", device="/dev/vda1", mountpoint="/", state="free"}'
+        values: "40-1x35"
+      # h2: 60% used, steady
+      - series: 'system_filesystem_usage_bytes{host_name="h2", sentinel_integration_id="i2", device="/dev/vda1", mountpoint="/", state="used"}'
+        values: "60x35"
+      - series: 'system_filesystem_usage_bytes{host_name="h2", sentinel_integration_id="i2", device="/dev/vda1", mountpoint="/", state="free"}'
+        values: "40x35"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: HostFilesystemFillingUp
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: host, entity_type: host, host_name: h1, sentinel_integration_id: i1, device: /dev/vda1, mountpoint: / }
+            exp_annotations: { summary: "/ on h1 will be full within 4 hours" }
+      - eval_time: 15m
+        alertname: HostFilesystemFull
+        exp_alerts: [] # 75% used: not full yet
+
+  - name: watched process stops
+    interval: 1m
+    input_series:
+      - series: 'process_cpu_time_seconds_total{host_name="h1", sentinel_integration_id="i1", process_executable_name="nginx", state="user"}'
+        values: "0+1x10"
+      - series: 'process_cpu_time_seconds_total{host_name="h1", sentinel_integration_id="i1", process_executable_name="sshd", state="user"}'
+        values: "0+1x40"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HostWatchedProcessAbsent
+        exp_alerts: []
+      - eval_time: 22m
+        alertname: HostWatchedProcessAbsent
+        exp_alerts:
+          - exp_labels: { severity: critical, pack: host, entity_type: host, host_name: h1, sentinel_integration_id: i1, process_executable_name: nginx }
+            exp_annotations: { summary: "Watched process nginx is not running on h1" }

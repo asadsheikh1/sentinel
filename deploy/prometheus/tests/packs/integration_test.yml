@@ -1,0 +1,30 @@
+# promtool tests for rules/packs/integration.yml
+rule_files:
+  - ../../rules/packs/integration.yml
+evaluation_interval: 30s
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'otelcol_exporter_send_failed_metric_points_total{job="sentinel-agent", host_name="h1", sentinel_integration_id="i1", exporter="otlp_http/sentinel"}'
+        values: "0+100x20"
+      - series: 'otelcol_exporter_send_failed_metric_points_total{job="sentinel-agent", host_name="h2", sentinel_integration_id="i2", exporter="otlp_http/sentinel"}'
+        values: "0x20"
+      - series: 'otelcol_exporter_queue_size{job="sentinel-agent", host_name="h1", sentinel_integration_id="i1"}'
+        values: "1800x20"
+      - series: 'otelcol_exporter_queue_capacity{job="sentinel-agent", host_name="h1", sentinel_integration_id="i1"}'
+        values: "2000x20"
+      # The gateway's own Collector failing is not an agent problem.
+      - series: 'otelcol_exporter_send_failed_metric_points_total{job="gateway", host_name="sentinel", exporter="otlp_http/prometheus"}'
+        values: "0+100x20"
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: AgentExportFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: integration, entity_type: integration, host_name: h1, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "The agent on h1 keeps failing to send data" }
+      - eval_time: 10m
+        alertname: AgentQueueNearlyFull
+        exp_alerts:
+          - exp_labels: { severity: warning, pack: integration, entity_type: integration, host_name: h1, sentinel_integration_id: i1 }
+            exp_annotations: { summary: "The agent on h1 is buffering (90% of its queue)" }

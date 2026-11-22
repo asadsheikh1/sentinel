@@ -20,12 +20,13 @@ import structlog
 
 from sentinel.config import Settings
 from sentinel.prober.checks import CheckSpec, Result, run_check
-from sentinel.prober.otlp import logs_payload, metrics_payload
+from sentinel.prober.otlp import heartbeat_payload, logs_payload, metrics_payload
 from sentinel.prober.scheduler import Schedule
 from sentinel.prober.ssrf_guard import Guard
 
 log = structlog.get_logger("sentinel.prober")
 FLUSH_INTERVAL_S = 2.0
+HEARTBEAT_S = 15.0  # "the prober is alive", whatever the checks' intervals
 MAX_BACKLOG = 2000  # results kept while SENTINEL is unreachable (about 20 min of 50 checks)
 
 
@@ -73,6 +74,7 @@ class Prober:
         )
         self._sem = asyncio.Semaphore(settings.prober_concurrency)
         self._running: set[asyncio.Task[None]] = set()
+        self._last_heartbeat = float("-inf")
 
     async def _call(self, method: str, path: str, **kwargs: Any) -> httpx.Response | None:
         for attempt in (0, 1):
@@ -96,8 +98,24 @@ class Prober:
         self.schedule.update(checks, time.monotonic())
         return len(checks)
 
+    async def heartbeat(self) -> None:
+        """At least every HEARTBEAT_S: one small metric, so the prober's own
+        integration stays fresh between check runs (a check may run every 10 min)."""
+        now = time.monotonic()
+        if now - self._last_heartbeat < HEARTBEAT_S:
+            return
+        try:
+            sent = await self._call(
+                "POST", "/v1/metrics", json=heartbeat_payload(len(self.schedule.specs))
+            )
+        except httpx.HTTPError:
+            return
+        if sent is not None and sent.is_success:
+            self._last_heartbeat = now
+
     async def flush(self) -> bool:
         """Send buffered results. On failure they are kept (up to MAX_BACKLOG)."""
+        await self.heartbeat()
         batch, self.results = self.results, []
         if not batch:
             return True

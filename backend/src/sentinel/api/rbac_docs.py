@@ -41,6 +41,8 @@ class RouteInfo:
             return "SENTINEL Agent (ingest token)"
         if a.kind == "prober":
             return "SENTINEL prober (its ingest token)"
+        if a.kind == "hmac":
+            return "GitHub (signed webhook)"
         perm = Permission(str(a.value))
         return ", ".join(r.value for r in UserRole if perm in ROLE_PERMISSIONS[r])
 

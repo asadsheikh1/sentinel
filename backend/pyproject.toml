@@ -106,13 +106,16 @@ fail_under = 85
 root_package = "sentinel"
 
 [[tool.importlinter.contracts]]
-name = "Layering: cli -> api -> checks -> integrations -> telemetry -> prober -> auth -> security -> db -> log -> config"
+name = "Layering: cli -> api -> ingestion -> detection -> checks -> integrations -> events -> telemetry -> prober -> auth -> security -> db -> log -> config"
 type = "layers"
 layers = [
   "sentinel.cli",
   "sentinel.api",
+  "sentinel.ingestion",
+  "sentinel.detection",
   "sentinel.checks",
   "sentinel.integrations",
+  "sentinel.events",
   "sentinel.telemetry",
   "sentinel.prober",
   "sentinel.auth",
@@ -135,5 +138,8 @@ forbidden_modules = [
   "sentinel.telemetry",
   "sentinel.integrations",
   "sentinel.checks",
+  "sentinel.events",
+  "sentinel.detection",
+  "sentinel.ingestion",
   "sentinel.api",
 ]

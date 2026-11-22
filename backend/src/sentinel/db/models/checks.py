@@ -43,6 +43,8 @@ class EventType(enum.StrEnum):
     CLOUD_CHANGE = "cloud_change"
     PROBE_STATE = "probe_state"
     INTEGRATION_STATUS = "integration_status"
+    PUSH = "push"  # code pushed (GitHub)
+    WORKFLOW_RUN = "workflow_run"  # a CI run finished (GitHub)
 
 
 class HealthCheck(UUIDPrimaryKey, Timestamps, Base):
