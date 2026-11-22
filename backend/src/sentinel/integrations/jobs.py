@@ -12,7 +12,7 @@ from sentinel.integrations.gate import IngestGate
 log = structlog.get_logger("sentinel.integrations")
 
 
-async def _forever(name: str, interval_s: float, job: Callable[[], Awaitable[object]]) -> None:
+async def forever(name: str, interval_s: float, job: Callable[[], Awaitable[object]]) -> None:
     while True:
         await asyncio.sleep(interval_s)
         try:
@@ -38,14 +38,14 @@ def start(gate: IngestGate) -> list[asyncio.Task[None]]:
     query = prometheus_query(settings.prometheus_url)
     return [
         asyncio.create_task(
-            _forever(
+            forever(
                 "integration_health",
                 settings.integration_flush_interval_s,
                 lambda: health_pass(gate),
             )
         ),
         asyncio.create_task(
-            _forever(
+            forever(
                 "entity_discovery",
                 settings.entity_discovery_interval_s,
                 lambda: discovery_pass(gate, query),

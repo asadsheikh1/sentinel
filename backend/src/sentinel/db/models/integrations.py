@@ -38,6 +38,7 @@ class IntegrationKind(enum.StrEnum):
     CHECKIN = "checkin"
     AWS_ACCOUNT = "aws_account"
     UPLOAD = "upload"
+    PROBER = "prober"  # SENTINEL's own prober (one, provisioned by the API)
 
 
 class IntegrationStatus(enum.StrEnum):

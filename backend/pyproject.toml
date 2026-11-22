@@ -40,6 +40,7 @@ dev = [
     "pyyaml>=6.0.3",
     "ruff>=0.17.5",
     "testcontainers>=4.15.0",
+    "trustme>=1.2.1",
     "types-pyyaml>=6.0.12.20261113",
 ]
 
@@ -105,16 +106,34 @@ fail_under = 85
 root_package = "sentinel"
 
 [[tool.importlinter.contracts]]
-name = "Layering: cli -> api -> integrations -> telemetry -> auth -> security -> db -> log -> config"
+name = "Layering: cli -> api -> checks -> integrations -> telemetry -> prober -> auth -> security -> db -> log -> config"
 type = "layers"
 layers = [
   "sentinel.cli",
   "sentinel.api",
+  "sentinel.checks",
   "sentinel.integrations",
   "sentinel.telemetry",
+  "sentinel.prober",
   "sentinel.auth",
   "sentinel.security",
   "sentinel.db",
   "sentinel.log",
   "sentinel.config",
+]
+
+# The prober runs in its own container with no database and no API access: its
+# code may use only configuration and logging (ADR-0015).
+[[tool.importlinter.contracts]]
+name = "The prober is isolated: no db, auth, security, telemetry, integrations, checks or api"
+type = "forbidden"
+source_modules = ["sentinel.prober"]
+forbidden_modules = [
+  "sentinel.db",
+  "sentinel.auth",
+  "sentinel.security",
+  "sentinel.telemetry",
+  "sentinel.integrations",
+  "sentinel.checks",
+  "sentinel.api",
 ]

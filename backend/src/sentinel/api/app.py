@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
@@ -11,15 +12,28 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from sentinel import __version__
 from sentinel.api import errors
-from sentinel.api.routers import agent, api_keys, audit, auth, ingest_auth, integrations, users
+from sentinel.api.routers import (
+    agent,
+    api_keys,
+    audit,
+    auth,
+    checks,
+    ingest_auth,
+    integrations,
+    users,
+)
 from sentinel.api.schemas import MetaOut
 from sentinel.api.security import authenticated, public
 from sentinel.auth.ratelimit import RateLimiter
+from sentinel.checks.prober_identity import ensure_prober
+from sentinel.checks.state import probe_state_pass
 from sentinel.config import Settings, get_settings
 from sentinel.db.engine import create_engine, create_session_factory, ping
 from sentinel.integrations import jobs
+from sentinel.integrations.entities import prometheus_query
 from sentinel.integrations.gate import IngestGate
 from sentinel.log import configure_logging
+from sentinel.prober.ssrf_guard import Guard
 
 
 class HealthResponse(BaseModel):
@@ -52,7 +66,25 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
         app.state.session_factory = create_session_factory(db_engine)
         gate = IngestGate(settings, app.state.session_factory)
         app.state.ingest_gate = gate
+        try:
+            app.state.prober_integration_id = await ensure_prober(
+                app.state.session_factory, settings
+            )
+        except Exception as exc:  # the API must start (and answer /healthz) without the DB
+            app.state.prober_integration_id = None
+            log.warning("prober_provisioning_failed", error=type(exc).__name__)
         tasks = jobs.start(gate) if settings.background_jobs_enabled else []
+        if settings.background_jobs_enabled:
+            query = prometheus_query(settings.prometheus_url)
+            tasks.append(
+                asyncio.create_task(
+                    jobs.forever(
+                        "probe_state",
+                        settings.probe_state_interval_s,
+                        lambda: probe_state_pass(app.state.session_factory, query, gate),
+                    )
+                )
+            )
         log.info("app_started", env=settings.env.value, version=__version__)
         try:
             yield
@@ -73,6 +105,8 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
         openapi_url=None if settings.is_prod else "/api/v1/openapi.json",
     )
     app.state.settings = settings
+    # SSRF guard for check targets at creation (tests swap in a fake resolver).
+    app.state.check_guard = Guard(allow_hosts=frozenset(settings.prober_allow_hosts))
     app.state.login_limiter = RateLimiter(settings.login_rate_limit_per_minute, 60)
     errors.install(app)
 
@@ -109,5 +143,8 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
     for module in (auth, users, api_keys, audit, integrations, ingest_auth, agent):
         app.include_router(module.router)
     app.include_router(integrations.entities_router)
+    app.include_router(checks.router)
+    app.include_router(checks.prober_router)
+    app.include_router(checks.events_router)
 
     return app

@@ -26,6 +26,12 @@ otlp:
     # these, two processes on one host would map to the same series.
     - process.executable.name
     - process.pid
+    # External health checks: one series per check.
+    - sentinel.check.id
+    - sentinel.check.name
+    - sentinel.check.kind
+    - sentinel.check.integration_id
+    - server.address
 
 storage:
   tsdb:

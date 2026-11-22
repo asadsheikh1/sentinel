@@ -25,6 +25,8 @@ def _mib(limit: str) -> float:
 
 def test_every_image_pinned_by_tag_and_digest() -> None:
     for name, svc in _services().items():
+        if svc["image"].startswith("localhost/sentinel-"):  # built here from our Containerfile
+            continue
         assert re.fullmatch(r"docker\.io/[\w./-]+:[\w.-]+@sha256:[0-9a-f]{64}", svc["image"]), name
 
 
