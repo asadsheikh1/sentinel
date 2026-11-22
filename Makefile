@@ -69,7 +69,7 @@ down: ## Stop the containers (data volume is kept)
 	$(COMPOSE) down
 
 obs-up: ## Start the telemetry stores (Prometheus :9090, Loki :3100, Jaeger :16686, Alertmanager :9093)
-	$(COMPOSE_OBS) up -d prometheus alertmanager loki jaeger
+	$(COMPOSE_OBS) up -d --no-deps prometheus alertmanager loki jaeger
 
 obs-down: ## Stop the telemetry stores (data kept)
 	$(COMPOSE_OBS) stop prometheus alertmanager loki jaeger

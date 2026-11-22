@@ -25,6 +25,7 @@ jobs:
   stores:
     name: telemetry stores accept OTLP and answer queries (rootless Podman)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3

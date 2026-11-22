@@ -1,7 +1,7 @@
 # Step 10 report — Rule packs, signals, deployments, and webhooks
 
-**Status:** 🟡 built and tested locally; CI results pending.
-**PR:** (link added after opening). Also [aviro-shop PR #3](https://github.com/asadsheikh1/aviro-shop/pull/3) (found while running S01; see below).
+**Status:** ✅ built and tested; all 10 CI checks green.
+**PR:** [PR #10](https://github.com/asadsheikh1/sentinel/pull/10). Also [aviro-shop PR #3](https://github.com/asadsheikh1/aviro-shop/pull/3) (found while running S01; see below).
 **Date:** 2026-11-22
 
 ## What was built
@@ -19,16 +19,16 @@
 | API | `POST /api/v1/ingest/{alertmanager,deployments,github}`; `GET /api/v1/signals`, `GET /api/v1/deployments`. A new access rule, `hmac` (GitHub), is in `docs/rbac.md` |
 | Database | Migration 0005: `signals`, `deployments`, event types `push` and `workflow_run` |
 | Entity lookup | `integrations/entities.py: resolve_entity`, from labels: check → container → service (by `service.name` attribute) → host |
-| Tests | `tests/unit/test_detection_unit.py` (gap table, signatures, payload validation), `tests/db/test_detection.py`, `tests/gateway/test_detection_e2e.py` (a live 5xx burst → signal), and two agent tests (`test_disk_filling_up_raises_a_host_signal` and `test_agent_stopped_becomes_a_telemetry_gap`) |
+| Tests | `tests/unit/test_detection_unit.py` (gap table, signatures, payload validation), `tests/db/test_detection.py`, `tests/gateway/test_detection_e2e.py` (Alertmanager → signal on its own, and a live 5xx burst → signal), and two agent tests (`test_disk_filling_up_raises_a_host_signal` and `test_agent_stopped_becomes_a_telemetry_gap`) |
 | Docs | [Detection guide](../guides/detection.md) |
 
 ## Acceptance criteria (roadmap)
 
 | Criterion | Result |
 |---|---|
-| S01 → signal in ≤ 3 min | ✅ automated test: a synthetic 20% 5xx burst through the gateway → signal **105 s** after the fault. Real S01: **130 s** after the bad release went live: AVIRO under load from 20 synthetic shoppers, real `make deploy REF=scenario/S01-bad`. Critical `ServiceHighErrorRatio` signals for `orders` (100% failing) and `gateway` (10.5%), linked to their service entities. The deployment arrived through the webhook. With the fix deployed, the signals resolved in 110 s |
-| Host disk-fill fault → host signal | ⏳ CI (the fresh Ubuntu VM): a fill file pushes `/` past 90% and a `HostFilesystemFull` signal must arrive, linked to the host. Not run locally, because filling the Podman VM's disk would grow its image on your Mac by about 40 GB. The rule itself is promtool-tested, fast filling included |
-| Agent stopped → `telemetry_gap` | ✅ DB tests for every row of the table (S15 agent problem, S16 host down). ⏳ live in CI: stop the agent → a firing gap → start it → resolved |
+| S01 → signal in ≤ 3 min | ✅ automated test: a synthetic 20% 5xx burst through the gateway → signal **105 s** after the fault locally, and within the asserted 180 s in CI. Real S01: **130 s** after the bad release went live: AVIRO under load from 20 synthetic shoppers, real `make deploy REF=scenario/S01-bad`. Critical `ServiceHighErrorRatio` signals for `orders` (100% failing) and `gateway` (10.5%), linked to their service entities. The deployment arrived through the webhook. With the fix deployed, the signals resolved in 110 s |
+| Host disk-fill fault → host signal | ✅ CI, on the fresh Ubuntu 24.04 VM: a fill file pushed `/` past 90%, and a `HostFilesystemFull` signal arrived, linked to the host. The whole test, fill included, took 161 s (the rule has a 2-minute `for`). Not run locally, because filling the Podman VM's disk would grow its image on your Mac by about 40 GB |
+| Agent stopped → `telemetry_gap` | ✅ DB tests for every row of the table (S15 agent problem, S16 host down). ✅ live in CI on the VM: agent stopped → a firing gap → agent started → resolved (18 s for the whole test) |
 | 30 min of normal load → no signals | ✅ second run: **no new signals** while AVIRO served 63,448 requests under load from 20 synthetic shoppers. The only change in the window was an old gap from the first run *resolving*. The first run failed: no false alerts, but 120 flapping `telemetry_gap` signals (bug 4) |
 
 ## Bugs found and fixed during this step
@@ -46,8 +46,15 @@
    - `make deploy` deployed without the overlay.
 
    S01 couldn't be measured until this was fixed.
-6. **The Step 9 live prober test left its check behind**, and the check alerted forever on a target that no longer existed. It now deletes it.
-7. Smaller ones:
+6. **In CI, no rule-pack alert ever reached SENTINEL** (both live alert tests failed on the first CI run). On Podman 4.9, Alertmanager started before the API and created the shared key volume as its own user. The API's write of the key then failed (`PermissionError`), and every delivery failed with "no headers file". Podman 6 on the Mac starts the containers in another order, so it didn't show up locally. Fixes:
+   - Alertmanager now starts after the API, the same as the prober and its token;
+   - a new test posts one alert straight to Alertmanager and needs a signal within 60 s, so a broken webhook fails fast and points at the cause;
+   - CI's failure logs now include Alertmanager, Prometheus, both alert lists and the key volume.
+
+   That ordering first made `make obs-up`, which starts only the stores, pull in the API and Postgres. The observability job hung for two hours, because it had no timeout. `obs-up` now uses `--no-deps`, and the job has a 15-minute timeout.
+7. **The prober still flapped in the fast e2e stack**: its 15 s heartbeat was longer than that stack's 8 s stale threshold. The heartbeat is now a setting, `SENTINEL_PROBER_HEARTBEAT_S` (15 s by default, 3 s in `make stack-up-fast`).
+8. **The Step 9 live prober test left its check behind**, and the check alerted forever on a target that no longer existed. It now deletes it.
+9. Smaller ones:
    - a fragile test that expected the only API key in the shared database to be its own;
    - the GitHub endpoint's "not configured" answer, which is now `401` like any other unauthenticated call.
 
@@ -69,7 +76,9 @@ I broke four rules on a copy of the rules folder, and promtool caught all four:
 
 ## Known limitations
 
-- **No host signal tested locally** (above). It depends on CI.
+- **No host signal tested locally** (above). It's tested in CI only.
+- **Podman 4.x and `make obs-up` before the full stack:** if the stores were started on their own first, Alertmanager has already created the key volume, and the API can't write to it. Fix it with `make stack-down && podman volume rm sentinel_alertmanager-key`. The full stack (`make stack-up`) starts things in the right order.
+- **A failed key provisioning only logs a warning** (`alertmanager_key_provisioning_failed`), and the API keeps running. Bug 6 showed that this fails silently. The delivery test now catches it; a health indicator for it would belong with the integration-health UI.
 - **A gap's "covering" probe is matched by name:** the check's target host against host and container names the agent reported. A check of `www.example.com` on a host named `web-1` isn't related, so its gap stays "unknown". An explicit link (integration ↔ check) would fix that later.
 - **The database pack is silent** until the PostgreSQL receiver is configured (a Should item).
 - **No cloud view** in the gap table until the AWS connector.
