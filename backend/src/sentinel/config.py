@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     prober_endpoint: str = "http://ingest.sentinel.internal:4319"
     prober_concurrency: int = Field(default=10, ge=1, le=50)
     prober_config_refresh_s: float = Field(default=30.0, gt=0)
+    # "The prober is alive", sent between check runs. Must stay below the
+    # integration stale threshold (`integration_stale_after_s`).
+    prober_heartbeat_s: float = Field(default=15.0, gt=0)
     # Development only: exact host names the guard lets through although they
     # resolve to private addresses (the demo shop on this machine). Refused in prod.
     prober_allow_hosts: Annotated[list[str], NoDecode] = Field(default_factory=list)

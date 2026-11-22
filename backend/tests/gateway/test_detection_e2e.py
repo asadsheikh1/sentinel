@@ -99,6 +99,40 @@ class FakeService(threading.Thread):
                 self.stop.wait(5)
 
 
+ALERTMANAGER = "http://127.0.0.1:9093"
+
+
+def test_alertmanager_delivers_to_sentinel(admin: Admin) -> None:
+    """The last hop on its own: an alert posted to Alertmanager becomes a signal,
+    and resolving it resolves the signal. Fails fast (and says where) if the
+    webhook, its key file, or the network between them is broken."""
+    service = f"am-{uuid.uuid4().hex[:6]}"
+    alert = {
+        "labels": {
+            "alertname": "SentinelDeliveryCheck",
+            "severity": "info",
+            "pack": "e2e",
+            "entity_type": "service",
+            "service_name": service,
+        },
+        "annotations": {"summary": f"{service}: delivery check"},
+    }
+    with httpx.Client(base_url=ALERTMANAGER, timeout=10) as am:
+        assert am.post("/api/v2/alerts", json=[alert]).status_code == 200
+
+        def signals() -> list[dict[str, Any]]:
+            return admin.get(f"/api/v1/signals?service={service}&kind=prom_alert")
+
+        found = eventually(signals, timeout=60, every=2)
+        assert found[0]["status"] == "firing"
+        assert found[0]["title"] == f"{service}: delivery check"
+
+        ended = {**alert, "endsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        assert am.post("/api/v2/alerts", json=[ended]).status_code == 200
+        # A resolved notification waits for the group interval (1 min).
+        eventually(lambda: [s for s in signals() if s["status"] == "resolved"], timeout=120)
+
+
 def test_a_5xx_burst_becomes_a_service_signal_within_3_minutes(admin: Admin) -> None:
     _, token = admin.create(kind="otel_app", expected_signals=["metrics"])
     service = f"checkout-{uuid.uuid4().hex[:6]}"

@@ -26,7 +26,6 @@ from sentinel.prober.ssrf_guard import Guard
 
 log = structlog.get_logger("sentinel.prober")
 FLUSH_INTERVAL_S = 2.0
-HEARTBEAT_S = 15.0  # "the prober is alive", whatever the checks' intervals
 MAX_BACKLOG = 2000  # results kept while SENTINEL is unreachable (about 20 min of 50 checks)
 
 
@@ -99,10 +98,10 @@ class Prober:
         return len(checks)
 
     async def heartbeat(self) -> None:
-        """At least every HEARTBEAT_S: one small metric, so the prober's own
+        """At least every `prober_heartbeat_s`: one small metric, so the prober's own
         integration stays fresh between check runs (a check may run every 10 min)."""
         now = time.monotonic()
-        if now - self._last_heartbeat < HEARTBEAT_S:
+        if now - self._last_heartbeat < self.settings.prober_heartbeat_s:
             return
         try:
             sent = await self._call(
