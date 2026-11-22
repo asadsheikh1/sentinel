@@ -44,6 +44,10 @@ services:
       # Its API key for SENTINEL (alerts:write), written by the API.
       - alertmanager-key:/etc/alertmanager/secrets:ro
     ports: ["127.0.0.1:9093:9093"]
+    # The API must create the key volume (its `:U` owns it). Started first,
+    # Alertmanager would create it as `nobody` and the API couldn't write the
+    # key (seen on Podman 4.9). Same ordering as the prober's token.
+    depends_on: [api]
     mem_limit: 128m
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
