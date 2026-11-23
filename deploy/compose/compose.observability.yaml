@@ -154,6 +154,9 @@ services:
       SENTINEL_ALERTMANAGER_KEY_FILE: /run/sentinel-alertmanager/api-key
       SENTINEL_GITHUB_WEBHOOK_SECRET: ${SENTINEL_GITHUB_WEBHOOK_SECRET:-dev-only-github-webhook-secret}
       SENTINEL_GAP_INTERVAL_S: ${SENTINEL_GAP_INTERVAL_S:-30}
+      SENTINEL_ERROR_POLL_INTERVAL_S: ${SENTINEL_ERROR_POLL_INTERVAL_S:-30}
+      SENTINEL_ERROR_POLL_LAG_S: ${SENTINEL_ERROR_POLL_LAG_S:-20}
+      SENTINEL_ERROR_GROUP_QUIET_S: ${SENTINEL_ERROR_GROUP_QUIET_S:-600}
     # Development: serve agent/ from the checkout, so installer edits need no rebuild.
     volumes:
       - ../../agent:/app/agent:ro,Z

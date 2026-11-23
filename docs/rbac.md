@@ -48,6 +48,8 @@ Machine keys (`X-Sentinel-Key`) carry scopes, never user permissions.
 | GET | `/api/v1/entities` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/entities/{entity_id}` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/entities/{entity_id}/relations` | `incidents:read` | viewer, responder, approver, admin |
+| GET | `/api/v1/error-groups` | `incidents:read` | viewer, responder, approver, admin |
+| GET | `/api/v1/error-groups/{group_id}` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/events` | `incidents:read` | viewer, responder, approver, admin |
 | POST | `/api/v1/ingest/alertmanager` | API key scope `alerts:write` | API keys only |
 | POST | `/api/v1/ingest/deployments` | API key scope `deployments:write` | API keys only |

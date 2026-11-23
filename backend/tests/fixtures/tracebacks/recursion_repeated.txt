@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/srv/shop/src/shop/checkout.py", line 14, in save
+    fn()
+  File "/srv/shop/src/shop/checkout.py", line 41, in recursion
+    f(0)
+  File "/srv/shop/src/shop/checkout.py", line 40, in f
+    return f(n + 1)
+           ^^^^^^^^
+  File "/srv/shop/src/shop/checkout.py", line 40, in f
+    return f(n + 1)
+           ^^^^^^^^
+  File "/srv/shop/src/shop/checkout.py", line 40, in f
+    return f(n + 1)
+           ^^^^^^^^
+  [Previous line repeated 994 more times]
+RecursionError: maximum recursion depth exceeded

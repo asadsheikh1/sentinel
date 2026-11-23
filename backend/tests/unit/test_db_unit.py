@@ -36,6 +36,8 @@ def test_all_tables_registered() -> None:
         "events",
         "signals",
         "deployments",
+        "error_groups",
+        "poll_watermarks",
         "integration_signal_status",
         "entities",
         "entity_relations",

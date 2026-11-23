@@ -6,6 +6,19 @@ server:
   http_listen_port: 3100
   grpc_listen_port: 9096
   log_level: warn
+  # Query results travel querier → frontend over gRPC inside this one process.
+  # 4 MB (the default) is less than one page of error lines with full stack
+  # traces: the querier failed and the query timed out after 60 s (Step 11).
+  grpc_server_max_recv_msg_size: 33554432 # 32 MB
+  grpc_server_max_send_msg_size: 33554432
+
+frontend_worker:
+  grpc_client_config:
+    max_send_msg_size: 33554432
+
+query_scheduler:
+  grpc_client_config:
+    max_send_msg_size: 33554432
 
 common:
   instance_addr: 127.0.0.1

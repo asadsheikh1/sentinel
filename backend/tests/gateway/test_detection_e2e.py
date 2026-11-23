@@ -11,6 +11,7 @@ Needs `make stack-up-fast` (Prometheus, Alertmanager and the API with rule packs
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 import httpx2 as httpx
@@ -168,6 +169,83 @@ def test_a_5xx_burst_becomes_a_service_signal_within_3_minutes(admin: Admin) -> 
     finally:
         fake.stop.set()
         fake.join(timeout=10)
+
+
+def _error_logs(service: str, n: int) -> dict[str, Any]:
+    """`n` OTLP error records of one KeyError, each from a different request (Step 11)."""
+    stack = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "tracebacks" / "aviro_s01_keyerror.txt"
+    ).read_text()
+    now = time.time_ns()
+    records = [
+        {
+            "timeUnixNano": str(now + i * 1000),
+            "severityNumber": 17,
+            "severityText": "ERROR",
+            "body": {"stringValue": "unhandled exception"},
+            "traceId": uuid.uuid4().hex,
+            "spanId": uuid.uuid4().hex[:16],
+            "attributes": [
+                {"key": k, "value": {"stringValue": v}}
+                for k, v in {
+                    "exception.type": "KeyError",
+                    "exception.message": "gift_message",
+                    "exception.stacktrace": stack,
+                    "code.file.path": "/app/.venv/lib/python3.12/site-packages/aviro/common/service.py",  # noqa: E501
+                    "code.function.name": "faults_and_errors",
+                    "order_id": str(uuid.uuid4()),
+                }.items()
+            ],
+        }
+        for i in range(n)
+    ]
+    resource = {
+        "service.name": service,
+        "service.namespace": "ci",
+        "deployment.environment.name": "ci",
+    }
+    return {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": k, "value": {"stringValue": v}} for k, v in resource.items()
+                    ]
+                },
+                "scopeLogs": [{"scope": {"name": "aviro.orders"}, "logRecords": records}],
+            }
+        ]
+    }
+
+
+def test_exception_logs_become_one_error_group_and_a_signal(admin: Admin) -> None:
+    """Step 11 live: OTLP exception logs → Loki → poller → one group, one signal."""
+    _, token = admin.create(kind="otel_app", expected_signals=["logs"])
+    service = f"orders-{uuid.uuid4().hex[:6]}"
+    with httpx.Client(timeout=10) as http:
+        for _ in range(3):  # three batches, 30 failing requests in all
+            r = http.post(
+                f"{INGEST}/v1/logs",
+                json=_error_logs(service, 10),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 200, r.text
+    groups = eventually(
+        lambda: [
+            g
+            for g in admin.get(f"/api/v1/error-groups?service={service}")
+            if g["total_count"] >= 30
+        ],
+        timeout=90,
+        every=3,
+    )
+    assert len(groups) == 1
+    assert groups[0]["exception_type"] == "KeyError"
+    assert groups[0]["top_frame"] == "aviro/orders/app.py:create_order"
+    assert groups[0]["total_count"] == 30
+    signals = admin.get(f"/api/v1/signals?service={service}&kind=error_group_new")
+    assert len(signals) == 1
+    assert signals[0]["status"] == "firing"
 
 
 def test_deployments_and_github_events_are_ingested_live(admin: Admin) -> None:

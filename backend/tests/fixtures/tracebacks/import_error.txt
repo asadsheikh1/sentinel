@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/srv/shop/src/shop/checkout.py", line 14, in save
+    fn()
+  File "/srv/shop/src/shop/checkout.py", line 82, in frozen_import
+    __import__("module_that_does_not_exist_xyz")
+ModuleNotFoundError: No module named 'module_that_does_not_exist_xyz'
