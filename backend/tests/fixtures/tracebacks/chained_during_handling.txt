@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/srv/shop/src/shop/checkout.py", line 26, in chained
+    int("abc")
+ValueError: invalid literal for int() with base 10: 'abc'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/srv/shop/src/shop/checkout.py", line 14, in save
+    fn()
+  File "/srv/shop/src/shop/checkout.py", line 28, in chained
+    {}["missing"]
+    ~~^^^^^^^^^^^
+KeyError: 'missing'

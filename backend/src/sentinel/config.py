@@ -114,6 +114,18 @@ class Settings(BaseSettings):
     # Shared secret of the GitHub webhook (HMAC-SHA256). Unset: the endpoint is off.
     github_webhook_secret: SecretStr | None = None
     gap_interval_s: float = Field(default=30.0, gt=0)
+    # Log error grouping (Step 11): Loki is read up to `lag` behind now, so lines
+    # that arrive a little late are still counted once.
+    error_poll_interval_s: float = Field(default=30.0, gt=0)
+    error_poll_lag_s: float = Field(default=20.0, ge=0)
+    error_poll_lookback_s: float = Field(default=900.0, gt=0)  # the first pass only
+    # Lines carry whole stack traces (up to 16 KB): keep a page well under Loki's
+    # response limits. 20 pages x 500 = 10,000 error lines per query per pass.
+    error_poll_page_size: int = Field(default=500, ge=10, le=5000)
+    error_poll_max_pages: int = Field(default=20, ge=1, le=100)
+    error_group_quiet_s: float = Field(default=600.0, gt=0)  # a "new" signal resolves
+    error_spike_factor: float = Field(default=5.0, gt=1)
+    error_spike_min_count: int = Field(default=20, ge=1)  # in 5 minutes
     loki_url: str = "http://127.0.0.1:3100"
     jaeger_url: str = "http://127.0.0.1:16686"
     telemetry_timeout_s: float = Field(default=10.0, gt=0, le=60)

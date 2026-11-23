@@ -6,16 +6,18 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
     Index,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sentinel.db.base import Base, UUIDPrimaryKey, enum_values
@@ -108,4 +110,69 @@ class Deployment(UUIDPrimaryKey, Base):
             "commit_sha IS NULL OR commit_sha ~ '^[0-9a-f]{7,64}$'", name="commit_sha_hex"
         ),
         Index(None, "service_name", "deployed_at"),
+    )
+
+
+class ErrorGroup(UUIDPrimaryKey, Base):
+    """Error log lines with the same fingerprint, per scope (a service, or a host's unit).
+
+    ``scope_key`` is what the group is unique within: ``service:{namespace}/{name}@{env}``,
+    ``container:{host}/{name}``, ``unit:{host}/{unit}``, ``host:{host}`` or
+    ``integration:{id}``. ``minute_counts`` holds the last ~70 minutes of counts per
+    minute (epoch minute → count): the spike baseline.
+    """
+
+    __tablename__ = "error_groups"
+
+    scope_key: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("entities.id", ondelete="SET NULL")
+    )
+    service_name: Mapped[str | None] = mapped_column(Text)
+    source_integration_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("integrations.id", ondelete="SET NULL")
+    )
+    fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    exception_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    normalized_message: Mapped[str] = mapped_column(Text, nullable=False)
+    top_frame: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    level: Mapped[str] = mapped_column(Text, nullable=False, server_default="error")
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    total_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    minute_counts: Mapped[dict[str, int]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    sample_trace_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")
+    )
+    sample_log: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("scope_key", "fingerprint"),
+        CheckConstraint("level IN ('error','critical')", name="level_valid"),
+        Index(None, "service_name", "last_seen"),
+        Index(None, "entity_id", "last_seen"),
+        Index(None, "last_seen"),
+    )
+
+
+class PollWatermark(Base):
+    """How far a poller has read (exclusive), e.g. ``loki_errors``."""
+
+    __tablename__ = "poll_watermarks"
+
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    last_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_ns: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

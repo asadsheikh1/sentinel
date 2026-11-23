@@ -13,6 +13,7 @@ SENTINEL turns telemetry and outside events into two kinds of record:
 flowchart LR
   T[Telemetry in Prometheus] --> R[Rule packs] --> AM[Alertmanager] -->|webhook, API key| S[(signals)]
   G[Integration goes stale] --> GAP[gap classifier] --> S
+  L[Error logs in Loki] --> EG[error poller: fingerprint, count] --> S
   CI[CI / deploy script] -->|POST /ingest/deployments| E[(events + deployments)]
   GH[GitHub] -->|signed webhook| E
   P[Prober state changes] --> E
@@ -54,7 +55,8 @@ fires, and the packs' tests include cases that must stay quiet:
 |---|---|
 | `prom_alert` | A rule-pack alert, via Alertmanager. One signal per *episode*: the same alert firing again later is a new signal. Repeats and retries update it. A resolved signal is never re-opened by a late delivery |
 | `telemetry_gap` | An integration went `stale` (below) |
-| `error_group_new`, `error_group_spike` | Step 11 (log error grouping) |
+| `error_group_new` | A log error SENTINEL hasn't seen before in that service (or host unit). Resolves after 10 quiet minutes |
+| `error_group_spike` | A known error at 5× its usual rate (below) |
 
 Signals are linked to the inventory entity they're about. The lookup checks, in
 order: the health check, then the container, the service, and the host.
@@ -74,6 +76,61 @@ mainly external checks of the same machine:
 The classification is updated as probes change. The signal resolves when data
 flows again. A check "covers" a machine when its target host matches a host or
 container name that the agent reported.
+
+## Log error groups
+
+Every 30 s SENTINEL reads the error logs that arrived since last time and
+groups them. The same error with different IDs in it is **one group**,
+however many requests hit it.
+
+`GET /api/v1/error-groups?service=&entity=&since=&seen_since=` and
+`GET /api/v1/error-groups/{id}` (any signed-in role). The detail has the
+latest sample (message, stack trace, trace ID), the last ~70 minutes of counts
+per minute, and the group's signals.
+
+**What counts as an error:** a record with severity ERROR or worse, or one
+that carries an exception. A traceback or a JSON logger's `"level": "error"`
+counts too, even when the record says INFO, as container output read from the journal may.
+A line from a file or the journal goes by its own level when it has one, so
+an app that logs INFO to stderr isn't flagged.
+
+**The fingerprint:** a hash of three things.
+- **The exception type**, e.g. `KeyError`.
+- **The message, normalised:**
+  - UUIDs, numbers, e-mail and IP addresses, timestamps, URLs, hex values and
+    long quoted values become placeholders;
+  - short quoted names stay, because `KeyError: 'sku'` and
+    `KeyError: 'price'` are different bugs.
+- **The top in-app frame:** the innermost line of the stack trace in the app's
+  own code, as `file:function` without the line number. A redeploy that moves
+  the line keeps the same group.
+  - "In-app" means not the standard library or a third-party package. An
+    app's code is often installed in `site-packages` too, so its package is
+    taken from where the error was logged.
+  - Frameworks that log on an app's behalf (uvicorn, Django, …) never count
+    as the app.
+
+A plain ERROR line without a stack trace uses where it was logged instead of a
+frame.
+
+**Groups belong to a scope:**
+- **A service:** `service:{namespace}/{name}@{environment}`.
+- **Without a service:** the host's container, systemd unit or syslog
+  identifier, then the host itself.
+
+**Spikes:** a group at least 15 minutes old raises `error_group_spike` when
+both of these hold for the last 5 minutes:
+- at least 20 occurrences;
+- at least 5 times its average 5 minutes over the hour before.
+
+It resolves when that stops. The thresholds are settings
+(`SENTINEL_ERROR_SPIKE_*`).
+
+**Reliability:** Loki is read up to 20 s behind real time, so lines that arrive
+late are still counted. One pass is one database transaction: the groups,
+their signals and how far it has read are committed together. A pass that
+fails (Loki down, a restart) commits nothing, and the next one reads the same
+lines again. Every line is counted exactly once.
 
 ## Deployments
 
@@ -129,3 +186,5 @@ alert reaches SENTINEL quickly.
 | S01 (a deploy makes `POST /api/orders` fail) | Signal **130 s** after the bad release went live (191 s from the start of `make deploy`, which includes a 60 s image build). Resolved 110 s after the fix went live |
 | Synthetic 20% 5xx burst (`tests/gateway/test_detection_e2e.py`) | Signal 105 s after the fault (locally), then resolved |
 | Normal load, 30 minutes (AVIRO, 20 shoppers, 63,448 requests) | No signals |
+| S01 error group (Step 11) | One new group, `KeyError: gift_message` at `aviro/orders/app.py:create_order`. Its signal was recorded **34 s** after the first error reached Loki |
+| Normal load, 12 minutes (Step 11) | No new error groups |

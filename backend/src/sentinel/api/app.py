@@ -18,6 +18,7 @@ from sentinel.api.routers import (
     audit,
     auth,
     checks,
+    error_groups,
     ingest,
     ingest_auth,
     integrations,
@@ -31,6 +32,7 @@ from sentinel.checks.state import probe_state_pass
 from sentinel.config import Settings, get_settings
 from sentinel.db.engine import create_engine, create_session_factory, ping
 from sentinel.detection.gaps import gap_pass
+from sentinel.detection.poller import poll_pass
 from sentinel.ingestion.alertmanager_key import ensure_alertmanager_key
 from sentinel.integrations import jobs
 from sentinel.integrations.entities import prometheus_query
@@ -101,6 +103,15 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
                     )
                 )
             )
+            tasks.append(
+                asyncio.create_task(
+                    jobs.forever(
+                        "error_groups",
+                        settings.error_poll_interval_s,
+                        lambda: poll_pass(app.state.session_factory, settings),
+                    )
+                )
+            )
         log.info("app_started", env=settings.env.value, version=__version__)
         try:
             yield
@@ -165,5 +176,6 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
     app.include_router(ingest.router)
     app.include_router(ingest.signals_router)
     app.include_router(ingest.deployments_router)
+    app.include_router(error_groups.router)
 
     return app

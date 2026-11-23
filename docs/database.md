@@ -92,6 +92,33 @@
 
 **Indexes:** `ix_entity_relations_to_entity_id` (entity_relations.to_entity_id)
 
+## `error_groups`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `scope_key` | TEXT | no |  |  |
+| `entity_id` | UUID | yes |  | → `entities.id` ON DELETE SET NULL |
+| `service_name` | TEXT | yes |  |  |
+| `source_integration_id` | UUID | yes |  | → `integrations.id` ON DELETE SET NULL |
+| `fingerprint` | TEXT | no |  |  |
+| `exception_type` | TEXT | no | `` |  |
+| `normalized_message` | TEXT | no |  |  |
+| `top_frame` | TEXT | no | `` |  |
+| `level` | TEXT | no | `error` |  |
+| `first_seen` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `last_seen` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `total_count` | BIGINT | no | `0` |  |
+| `minute_counts` | JSONB | no | `'{}'::jsonb` |  |
+| `sample_trace_ids` | TEXT[] | no | `'{}'::text[]` |  |
+| `sample_log` | JSONB | no | `'{}'::jsonb` |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `id` | UUID | no | app: `uuid7()` | PK |
+
+**Checks:** `level IN ('error','critical')`
+
+**Indexes:** `ix_error_groups_entity_id_last_seen` (error_groups.entity_id, error_groups.last_seen); `ix_error_groups_last_seen` (error_groups.last_seen); `ix_error_groups_service_name_last_seen` (error_groups.service_name, error_groups.last_seen)
+
 ## `events`
 
 | Column | Type | Null | Default | Key / reference |
@@ -207,6 +234,15 @@
 **Checks:** `attempts >= 0`; `max_attempts >= 1`; `status IN ('queued', 'running', 'succeeded', 'failed', 'dead')`
 
 **Indexes:** `ix_jobs_claimable` (jobs.queue, priority DESC, jobs.run_after WHERE status = 'queued'); `ix_jobs_queue_status_run_after_priority` (jobs.queue, jobs.status, jobs.run_after, jobs.priority)
+
+## `poll_watermarks`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `source` | TEXT | no |  | PK |
+| `last_ts` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `last_ns` | BIGINT | no |  |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 
 ## `sessions`
 
