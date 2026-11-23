@@ -1,7 +1,7 @@
 # Step 11 report — Log error grouping and fingerprinting
 
-**Status:** 🟡 built and tested locally; CI results pending.
-**PR:** (link added after opening).
+**Status:** ✅ built and tested; all 10 CI checks green.
+**PR:** [PR #11](https://github.com/asadsheikh1/sentinel/pull/11).
 **Date:** 2026-11-23
 
 ## What was built
@@ -47,7 +47,7 @@ For the measured run that gateway group was already known, as it is on any syste
 | New unit tests (`test_error_grouping_unit.py`) | 59 passed |
 | New DB tests (`test_error_groups.py`) | 8 passed |
 | `make test-gateway` (live stack, rootless Podman) | 23 passed, incl. the new error-group test |
-| CI | pending |
+| CI (PR #11) | all 10 checks green, including the gateway end to end job with the live error-group test |
 
 **A local environment problem, not a SENTINEL bug:** one gateway run failed two tests that have nothing to do with this step. The Podman VM's clock had fallen 2 h 15 min behind the Mac's, so test data stamped with the Mac's time looked 2 hours in the future, and Prometheus rejected it.
 - **Fix:** I set the VM clock from the Mac, gave the telemetry stores fresh volumes (Postgres kept), and the suite passed.
