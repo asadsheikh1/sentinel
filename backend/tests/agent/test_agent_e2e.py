@@ -35,6 +35,7 @@ import pytest
 pytestmark = pytest.mark.agent
 
 API = os.environ.get("SENTINEL_TEST_API_URL", "http://127.0.0.1:8000")
+INGEST = os.environ.get("SENTINEL_TEST_INGEST_URL", "http://127.0.0.1:4319")
 PROM = "http://127.0.0.1:9090"
 LOKI = "http://127.0.0.1:3100"
 TARGET = os.environ.get("SENTINEL_AGENT_TARGET", "container")
@@ -502,8 +503,53 @@ def _signals(admin: Admin, **params: str) -> list[dict[str, Any]]:
     return list(admin.get(f"/api/v1/signals?{query}&limit=500"))
 
 
+ENOSPC_TRACE = """Traceback (most recent call last):
+  File "/srv/shop/src/shop/receipts.py", line 41, in write_receipt
+    fh.write(pdf)
+OSError: [Errno 28] No space left on device
+"""
+
+
+def _app_logs(service: str, host: str, n: int, *, error: bool) -> dict[str, Any]:
+    """OTLP logs from an app running on ``host`` (as an instrumented app would send them)."""
+    now = time.time_ns()
+    attrs = (
+        {"exception.type": "OSError", "exception.message": "[Errno 28] No space left on device",
+         "exception.stacktrace": ENOSPC_TRACE, "code.file.path": "/srv/shop/src/shop/receipts.py",
+         "code.function.name": "write_receipt"}
+        if error else {}
+    )  # fmt: skip
+    records = [
+        {
+            "timeUnixNano": str(now + i),
+            "severityNumber": 17 if error else 9,
+            "severityText": "ERROR" if error else "INFO",
+            "body": {"stringValue": "receipt write failed" if error else "started"},
+            "attributes": [{"key": k, "value": {"stringValue": v}} for k, v in attrs.items()],
+        }
+        for i in range(n)
+    ]
+    resource = {"service.name": service, "service.namespace": "e2e", "host.name": host}
+    return {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": k, "value": {"stringValue": v}} for k, v in resource.items()
+                    ]
+                },
+                "scopeLogs": [{"scope": {"name": "shop.receipts"}, "logRecords": records}],
+            }
+        ]
+    }
+
+
 def test_disk_filling_up_raises_a_host_signal(installed: Installed, admin: Admin) -> None:
-    """S13-style: a fill file pushes the root filesystem past 90%."""
+    """S13: a fill file pushes the root filesystem past 90% (a host signal), and an app
+    on that host fails to write (its errors): one incident with both entities (Step 12).
+
+    The app's errors are sent by the test, as the app would send them: the disk is
+    filled to 93%, not 100%, so nothing on the runner really fails to write."""
     if TARGET != "host":
         pytest.skip("needs a real disk (a VM); a test container's filesystems are not physical")
     m = installed.machine
@@ -526,7 +572,34 @@ def test_disk_filling_up_raises_a_host_signal(installed: Installed, admin: Admin
 
         found = eventually(host_signal, timeout=360, every=10)
         assert found[0]["severity"] == "critical"
-        assert found[0]["entity_id"]  # attributed to the host entity
+        host_entity = found[0]["entity_id"]
+        assert host_entity  # attributed to the host entity
+
+        # An app on this host: discovered first (it runs_on the host), then failing.
+        service = f"shop-{installed.nonce[:6]}"
+        app = admin.create(name=f"e2e-app-{service}", kind="otel_app", expected_signals=["logs"])
+        token = {"Authorization": f"Bearer {app['ingest_token']}"}
+        with httpx.Client(timeout=10) as http:
+            started = _app_logs(service, installed.hostname, 1, error=False)
+            assert http.post(f"{INGEST}/v1/logs", json=started, headers=token).status_code == 200
+            svc = eventually(
+                lambda: admin.get(f"/api/v1/entities?type=service&q={service}"), timeout=60
+            )[0]
+            failing = _app_logs(service, installed.hostname, 20, error=True)
+            assert http.post(f"{INGEST}/v1/logs", json=failing, headers=token).status_code == 200
+
+        def one_incident() -> list[dict[str, Any]]:
+            for inc in admin.get("/api/v1/incidents?status=open"):
+                detail = admin.get(f"/api/v1/incidents/{inc['id']}")
+                ids = {e["id"] for e in detail["entities"]}
+                if {host_entity, svc["id"]} <= ids:
+                    return [detail]
+            return []
+
+        incident = eventually(one_incident, timeout=120, every=5)[0]
+        kinds = {s["kind"] for s in incident["signals"]}
+        assert {"prom_alert", "error_group_new"} <= kinds
+        assert "related_entity" in {s["reason"] for s in incident["signals"]}
     finally:
         m.sh(f"rm -f {fill}", check=False)
 

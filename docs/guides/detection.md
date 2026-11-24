@@ -113,6 +113,11 @@ an app that logs INFO to stderr isn't flagged.
 A plain ERROR line without a stack trace uses where it was logged instead of a
 frame.
 
+**Not grouped:** the OpenTelemetry SDK's own messages (loggers `opentelemetry.*`),
+such as "Failed to export logs batch due to timeout". They arrive as the app's
+errors, but they're about telemetry delivery, which a telemetry gap already
+covers.
+
 **Groups belong to a scope:**
 - **A service:** `service:{namespace}/{name}@{environment}`.
 - **Without a service:** the host's container, systemd unit or syslog
@@ -123,7 +128,7 @@ both of these hold for the last 5 minutes:
 - at least 20 occurrences;
 - at least 5 times its average 5 minutes over the hour before.
 
-It resolves when that stops. The thresholds are settings
+It resolves once the rate falls below half of both thresholds (so a rate hovering at 5× doesn't flap). The thresholds are settings
 (`SENTINEL_ERROR_SPIKE_*`).
 
 **Reliability:** Loki is read up to 20 s behind real time, so lines that arrive
@@ -178,6 +183,23 @@ invalid one is replaced.
 
 Grouping is per alert and entity, with `group_wait` set to 10 s, so a new
 alert reaches SENTINEL quickly.
+
+**Kept in step with Alertmanager.** The webhook is the fast path, but it can
+miss things. Every 60 s, SENTINEL reads Alertmanager's active alerts (a
+read-only API) and reconciles both ways. Both cases below were seen live in
+Step 12:
+- **A resolved alert it never heard about.** Alertmanager keeps active alerts
+  only in memory. Restarted while an alert fired, it forgets the alert and
+  never sends "resolved". A firing signal whose alert is missing from
+  Alertmanager on two checks in a row is resolved, with the reason
+  "no longer active in Alertmanager".
+- **A firing alert that was never sent.** Alertmanager's notification log
+  survives a restart. It can take a new episode of an alert it notified before
+  as a repeat, and hold it back for the 1-hour repeat interval. An active alert
+  with no firing signal is taken in through the same idempotent path as the
+  webhook.
+
+If Alertmanager can't be reached, nothing changes.
 
 ## How fast
 

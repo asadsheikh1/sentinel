@@ -10,6 +10,14 @@ from sentinel.db.models.detection import (
     SignalStatus,
 )
 from sentinel.db.models.identity import ApiKey, Session, User, UserInvite, UserRole
+from sentinel.db.models.incidents import (
+    Incident,
+    IncidentEntity,
+    IncidentEvent,
+    IncidentSignal,
+    IncidentStatus,
+    Severity,
+)
 from sentinel.db.models.integrations import (
     SIGNALS,
     Entity,
@@ -38,6 +46,11 @@ __all__ = [
     "Event",
     "EventType",
     "HealthCheck",
+    "Incident",
+    "IncidentEntity",
+    "IncidentEvent",
+    "IncidentSignal",
+    "IncidentStatus",
     "IngestToken",
     "Integration",
     "IntegrationKind",
@@ -47,6 +60,7 @@ __all__ = [
     "PollWatermark",
     "ProbeState",
     "Session",
+    "Severity",
     "Signal",
     "SignalKind",
     "SignalStatus",

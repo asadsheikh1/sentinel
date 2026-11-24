@@ -163,6 +163,20 @@ def test_a_5xx_burst_becomes_a_service_signal_within_3_minutes(admin: Admin) -> 
         assert s["status"] == "firing"
         assert s["title"].startswith(f"{service}: 20%")
 
+        # Step 12: the correlator puts it in an incident (every 2 s in stack-up-fast).
+        def incident() -> list[dict[str, Any]]:
+            return [
+                i for i in admin.get(f"/api/v1/incidents?service={service}")
+                if s["id"] in {x["id"] for x in admin.get(f"/api/v1/incidents/{i['id']}")["signals"]}  # noqa: E501
+            ]  # fmt: skip
+
+        inc = eventually(incident, timeout=30, every=2)[0]
+        assert inc["status"] == "open"
+        assert inc["severity"] == "SEV2"  # critical, 20% failing, one service (R1)
+        kinds = [e["type"] for e in admin.get(f"/api/v1/incidents/{inc['id']}/timeline")]
+        assert kinds[:2] == ["opened", "signal_attached"]
+        assert "investigation_queued" in kinds
+
         # Recovery: errors stop, the signal resolves (Alertmanager sends "resolved").
         fake.failing = False
         eventually(lambda: all(x["status"] == "resolved" for x in signal()), timeout=300, every=10)

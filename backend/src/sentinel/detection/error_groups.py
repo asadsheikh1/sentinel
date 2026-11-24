@@ -150,9 +150,17 @@ def _level(labels: Mapping[str, str], body: Mapping[str, Any] | None, line: str)
     return None
 
 
+# The OpenTelemetry SDK logs its own export failures through the app's logging,
+# so they arrive as the app's errors. They're about telemetry delivery (a
+# telemetry gap covers that), not the app.
+_SELF_DIAGNOSTICS = ("opentelemetry",)
+
+
 def classify_line(line: LogLine) -> Occurrence | None:
     """One error occurrence, or None for a line that isn't an error. Pure."""
     labels = line.labels
+    if labels.get("scope_name", "").split(".", 1)[0] in _SELF_DIAGNOSTICS:
+        return None
     body = _json_body(line.line)
     parsed: ParsedTraceback | None = None
     for text in (labels.get("exception_stacktrace"), _first(body, _JSON_STACK_KEYS), line.line):
@@ -257,6 +265,13 @@ def is_spiking(group: ErrorGroup, until: datetime, settings: Settings) -> tuple[
         and current >= settings.error_spike_factor * max(baseline, 1.0)
     )
     return spiking, current, baseline
+
+
+def still_high(current: int, baseline: float, settings: Settings) -> bool:
+    """An open spike stays open until the rate falls below half of what opened it."""
+    return current >= settings.error_spike_min_count / 2 and current >= (
+        settings.error_spike_factor / 2
+    ) * max(baseline, 1.0)
 
 
 def _short(text: str, n: int) -> str:
@@ -442,6 +457,8 @@ async def _spikes(
     for group in groups.values():
         spiking, current, baseline = is_spiking(group, until, settings)
         signal = await _open_spike(db, group) if group.id in open_ids or spiking else None
+        if signal is not None and not spiking and still_high(current, baseline, settings):
+            continue  # hysteresis: a spike ends below half its thresholds, not at them
         if spiking and signal is None:
             ratio = current / max(baseline, 1.0)
             label = group.service_name or group.scope_key.split(":", 1)[-1]

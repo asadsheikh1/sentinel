@@ -28,7 +28,7 @@ tests:
         alertname: ServiceHighErrorRatio
         exp_alerts:
           - exp_labels: { severity: critical, pack: service, entity_type: service, job: aviro/orders, service_name: orders }
-            exp_annotations: { summary: "orders: 20% of requests fail" }
+            exp_annotations: { summary: "orders: 20% of requests fail", value: "0.2" }
 
   - name: latency regression vs. a service that is always slow
     interval: 1m

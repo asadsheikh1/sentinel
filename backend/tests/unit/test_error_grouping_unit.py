@@ -19,6 +19,7 @@ from sentinel.detection.error_groups import (
     is_spiking,
     scope_of,
     spike_ratio,
+    still_high,
 )
 from sentinel.detection.fingerprint import (
     app_packages,
@@ -444,3 +445,23 @@ def test_a_page_full_of_one_timestamp_moves_on() -> None:
     lines, reached = _read(fake, 0, 1000, page=5)
     assert reached == 1000
     assert "after" in {line.line for line in lines}
+
+
+def test_the_otel_sdks_own_export_failures_are_not_app_errors() -> None:
+    line = LogLine(
+        T0,
+        "Failed to export logs batch due to timeout, max retries or shutdown.",
+        {
+            "service_name": "orders", "severity_number": "17",
+            "scope_name": "opentelemetry.exporter.otlp.proto.http._log_exporter",
+            "code_file_path": "/app/.venv/lib/python3.12/site-packages/opentelemetry/exporter/otlp/common/http.py",  # noqa: E501
+        },
+    )  # fmt: skip
+    assert classify_line(line) is None
+
+
+def test_an_open_spike_ends_below_half_its_thresholds() -> None:
+    s = Settings(error_spike_factor=5, error_spike_min_count=20)
+    assert still_high(30, 10.0, s)  # 3x: below 5x, above 2.5x: keep it open
+    assert not still_high(20, 10.0, s)  # 2x: over
+    assert not still_high(9, 1.0, s)  # fewer than half the minimum count

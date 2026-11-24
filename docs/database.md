@@ -88,7 +88,7 @@
 | `confidence` | FLOAT | no | `1.0` |  |
 | `last_seen` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 
-**Checks:** `confidence BETWEEN 0 AND 1`; `relation IN ('runs_on','uses','fronts','built_from','member_of')`; `source IN ('inferred','manual')`
+**Checks:** `confidence BETWEEN 0 AND 1`; `relation IN ('runs_on','uses','fronts','built_from','member_of')`; `source IN ('inferred','manual','traces')`
 
 **Indexes:** `ix_entity_relations_to_entity_id` (entity_relations.to_entity_id)
 
@@ -161,6 +161,70 @@
 **Checks:** `interval_s BETWEEN 5 AND 86400`; `char_length(name) BETWEEN 1 AND 100`; `char_length(target) BETWEEN 1 AND 2048`; `timeout_s > 0 AND timeout_s < interval_s`
 
 **Indexes:** `ix_health_checks_integration_id` (health_checks.integration_id)
+
+## `incident_entities`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `incident_id` | UUID | no |  | PK → `incidents.id` ON DELETE CASCADE |
+| `entity_id` | UUID | no |  | PK → `entities.id` ON DELETE CASCADE |
+| `role` | TEXT | no |  |  |
+| `added_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Checks:** `role IN ('origin','affected')`
+
+**Indexes:** `ix_incident_entities_entity_id` (incident_entities.entity_id)
+
+## `incident_events`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `id` | BIGINT | no | `None` | PK |
+| `incident_id` | UUID | no |  | → `incidents.id` ON DELETE CASCADE |
+| `ts` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `type` | TEXT | no |  |  |
+| `actor` | TEXT | no |  |  |
+| `data` | JSONB | no | `'{}'::jsonb` |  |
+
+**Checks:** `type IN ('opened', 'signal_attached', 'severity_changed', 'status_changed', 'deployment', 'investigation_queued', 'investigation_started', 'hypothesis_added', 'action_proposed', 'action_approved', 'action_executed', 'comment', 'feedback')`
+
+**Indexes:** `ix_incident_events_incident_id_ts` (incident_events.incident_id, incident_events.ts)
+
+## `incident_signals`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `incident_id` | UUID | no |  | PK → `incidents.id` ON DELETE CASCADE |
+| `signal_id` | UUID | no |  | PK unique → `signals.id` ON DELETE CASCADE |
+| `attached_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `reason` | TEXT | no |  |  |
+
+**Checks:** `reason IN ('first_signal', 'same_entity', 'same_service', 'related_entity', 'shared_trace', 'deploy_window')`
+
+## `incidents`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `number` | INTEGER | no | `None` | unique |
+| `title` | TEXT | no |  |  |
+| `status` | incident_status | no |  |  |
+| `severity` | incident_severity | no |  |  |
+| `started_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `detected_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `last_signal_at` | TIMESTAMP WITH TIME ZONE | no |  |  |
+| `mitigated_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `resolved_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `closed_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `primary_entity_id` | UUID | yes |  | → `entities.id` ON DELETE SET NULL |
+| `service_name` | TEXT | yes |  |  |
+| `suspected_deployment_id` | UUID | yes |  | → `deployments.id` ON DELETE SET NULL |
+| `summary` | TEXT | yes |  |  |
+| `created_by` | TEXT | no | `system` |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `id` | UUID | no | app: `uuid7()` | PK |
+
+**Indexes:** `ix_incidents_service_name_started_at` (incidents.service_name, incidents.started_at); `ix_incidents_started_at` (incidents.started_at); `ix_incidents_status_last_signal_at` (incidents.status, incidents.last_signal_at)
 
 ## `ingest_tokens`
 

@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     integration_stale_after_s: float = Field(default=270.0, gt=0)
     integration_max_series: int = Field(default=5000, ge=1)
     entity_discovery_interval_s: float = Field(default=60.0, gt=0)
+    dependency_discovery_interval_s: float = Field(default=120.0, gt=0)  # from traces
     prometheus_url: str = "http://127.0.0.1:9090"
 
     # SENTINEL Agent. The public ingest URL agents send to and download their
@@ -111,6 +112,8 @@ class Settings(BaseSettings):
     # Detection and change ingestion.
     # The API provisions Alertmanager's API key (scope alerts:write) into this file.
     alertmanager_key_file: str | None = None
+    alertmanager_url: str = "http://127.0.0.1:9093"  # read-only: active alerts
+    alert_reconcile_interval_s: float = Field(default=60.0, gt=0)
     # Shared secret of the GitHub webhook (HMAC-SHA256). Unset: the endpoint is off.
     github_webhook_secret: SecretStr | None = None
     gap_interval_s: float = Field(default=30.0, gt=0)
@@ -126,6 +129,11 @@ class Settings(BaseSettings):
     error_group_quiet_s: float = Field(default=600.0, gt=0)  # a "new" signal resolves
     error_spike_factor: float = Field(default=5.0, gt=1)
     error_spike_min_count: int = Field(default=20, ge=1)  # in 5 minutes
+    # Incidents (Step 12).
+    correlation_interval_s: float = Field(default=15.0, gt=0)
+    correlation_window_s: float = Field(default=900.0, gt=0)  # same incident if within
+    deploy_lookback_s: float = Field(default=3600.0, gt=0)  # nearest deployment before
+    mitigate_after_s: float = Field(default=300.0, ge=0)  # all signals resolved this long
     loki_url: str = "http://127.0.0.1:3100"
     jaeger_url: str = "http://127.0.0.1:16686"
     telemetry_timeout_s: float = Field(default=10.0, gt=0, le=60)

@@ -161,6 +161,74 @@ async def store(
         )
 
 
+DependencyFetch = Callable[[], Awaitable[list[tuple[str, str]]]]
+
+
+def jaeger_dependencies(
+    base_url: str, *, lookback_s: float = 3600.0, timeout_s: float = 10.0
+) -> DependencyFetch:
+    """Service call edges (caller, callee) seen in traces over the lookback window."""
+
+    async def fetch() -> list[tuple[str, str]]:
+        end_ms = int(datetime.now(UTC).timestamp() * 1000)
+        async with httpx.AsyncClient(base_url=base_url, timeout=timeout_s) as client:
+            response = await client.get(
+                "/api/dependencies",
+                params={"endTs": str(end_ms), "lookback": str(int(lookback_s * 1000))},
+            )
+            response.raise_for_status()
+            rows = response.json().get("data") or []
+        return [
+            (str(r["parent"]), str(r["child"]))
+            for r in rows
+            if isinstance(r, dict) and r.get("parent") and r.get("child")
+            and r["parent"] != r["child"]
+        ]  # fmt: skip
+
+    return fetch
+
+
+async def store_dependencies(
+    db: AsyncSession, edges: Iterable[tuple[str, str]], *, now: datetime | None = None
+) -> int:
+    """``caller uses callee`` between service entities of the same environment (I12).
+
+    Traces name services by ``service.name`` only, so each edge links every
+    caller/callee pair that shares an environment. Returns the relations written.
+    """
+    now = now or datetime.now(UTC)
+    rows = await db.execute(
+        select(Entity.id, Entity.attributes).where(Entity.type == EntityType.SERVICE)
+    )
+    by_name: dict[str, list[tuple[uuid.UUID, str]]] = {}
+    for eid, attrs in rows:
+        name = attrs.get("service.name")
+        if name:
+            by_name.setdefault(name, []).append((eid, attrs.get("deployment.environment.name", "")))
+    written = 0
+    for caller, callee in sorted(set(edges)):
+        for src, env in by_name.get(caller, []):
+            for dst, dst_env in by_name.get(callee, []):
+                if src == dst or env != dst_env:
+                    continue
+                stmt = insert(EntityRelation).values(
+                    from_entity_id=src,
+                    to_entity_id=dst,
+                    relation="uses",
+                    source="traces",
+                    confidence=1.0,
+                    last_seen=now,
+                )
+                await db.execute(
+                    stmt.on_conflict_do_update(
+                        index_elements=["from_entity_id", "to_entity_id", "relation"],
+                        set_={"last_seen": now},
+                    )
+                )
+                written += 1
+    return written
+
+
 def prometheus_query(base_url: str, timeout_s: float = 10.0) -> Query:
     async def query(promql: str) -> list[dict[str, Any]]:
         async with httpx.AsyncClient(base_url=base_url, timeout=timeout_s) as client:
