@@ -161,40 +161,42 @@ async def store(
         )
 
 
-DependencyFetch = Callable[[], Awaitable[list[tuple[str, str]]]]
+DependencyFetch = Callable[[], Awaitable[list[tuple[str, str, str | None]]]]
+
+# Edges the gateway's servicegraph connector counted in the last hour.
+ENV_LABEL = "client_deployment_environment_name"
+SERVICE_GRAPH_QUERY = (
+    f"group by (client, server, {ENV_LABEL}) "
+    "(max_over_time(traces_service_graph_request_total[1h]))"
+)
 
 
-def jaeger_dependencies(
-    base_url: str, *, lookback_s: float = 3600.0, timeout_s: float = 10.0
-) -> DependencyFetch:
-    """Service call edges (caller, callee) seen in traces over the lookback window."""
+def service_graph(query: Query) -> DependencyFetch:
+    """Service call edges (caller, callee, environment) from the gateway's service graph."""
 
-    async def fetch() -> list[tuple[str, str]]:
-        end_ms = int(datetime.now(UTC).timestamp() * 1000)
-        async with httpx.AsyncClient(base_url=base_url, timeout=timeout_s) as client:
-            response = await client.get(
-                "/api/dependencies",
-                params={"endTs": str(end_ms), "lookback": str(int(lookback_s * 1000))},
-            )
-            response.raise_for_status()
-            rows = response.json().get("data") or []
-        return [
-            (str(r["parent"]), str(r["child"]))
-            for r in rows
-            if isinstance(r, dict) and r.get("parent") and r.get("child")
-            and r["parent"] != r["child"]
-        ]  # fmt: skip
+    async def fetch() -> list[tuple[str, str, str | None]]:
+        edges = []
+        for row in await query(SERVICE_GRAPH_QUERY):
+            labels = row.get("metric", {})
+            client, server = labels.get("client"), labels.get("server")
+            if client and server and client != server:
+                edges.append((str(client), str(server), labels.get(ENV_LABEL) or None))
+        return edges
 
     return fetch
 
 
 async def store_dependencies(
-    db: AsyncSession, edges: Iterable[tuple[str, str]], *, now: datetime | None = None
+    db: AsyncSession,
+    edges: Iterable[tuple[str, str, str | None]],
+    *,
+    now: datetime | None = None,
 ) -> int:
     """``caller uses callee`` between service entities of the same environment (I12).
 
-    Traces name services by ``service.name`` only, so each edge links every
-    caller/callee pair that shares an environment. Returns the relations written.
+    Traces name services by ``service.name``. An edge links the caller and callee
+    entities of its environment (or, without one, every pair that shares an
+    environment). Returns the relations written.
     """
     now = now or datetime.now(UTC)
     rows = await db.execute(
@@ -206,10 +208,10 @@ async def store_dependencies(
         if name:
             by_name.setdefault(name, []).append((eid, attrs.get("deployment.environment.name", "")))
     written = 0
-    for caller, callee in sorted(set(edges)):
+    for caller, callee, edge_env in sorted(set(edges), key=lambda e: (e[0], e[1], e[2] or "")):
         for src, env in by_name.get(caller, []):
             for dst, dst_env in by_name.get(callee, []):
-                if src == dst or env != dst_env:
+                if src == dst or env != dst_env or (edge_env and env != edge_env):
                     continue
                 stmt = insert(EntityRelation).values(
                     from_entity_id=src,
@@ -269,6 +271,15 @@ async def resolve_entity(db: AsyncSession, labels: Mapping[str, str]) -> uuid.UU
         if check is not None and check.entity_id is not None:
             return check.entity_id
     host = labels.get("host_name")
+    kind = labels.get("entity_type")  # every rule-pack alert says what it's about
+    if kind == "host" and host:
+        # Not the agent's own service: host metrics carry the agent's `job` label,
+        # which the service fallback below would otherwise take (found in Step 12).
+        found_host: uuid.UUID | None = await db.scalar(
+            select(Entity.id).where(Entity.type == EntityType.HOST, Entity.key == host)
+        )
+        if found_host:
+            return found_host
     if container := labels.get("container_name"):
         found = await db.scalar(
             select(Entity.id).where(
@@ -279,7 +290,7 @@ async def resolve_entity(db: AsyncSession, labels: Mapping[str, str]) -> uuid.UU
         if found:
             return found
     service = labels.get("service_name")
-    if not service and (job := labels.get("job")):
+    if not service and kind in (None, "service") and (job := labels.get("job")):
         service = job.rsplit("/", 1)[-1]
     if service:
         namespace = labels.get("service_namespace") or (

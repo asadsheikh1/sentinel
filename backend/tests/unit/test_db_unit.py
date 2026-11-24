@@ -81,3 +81,40 @@ def test_docs_check_detects_drift(tmp_path: Path) -> None:
 def test_committed_database_docs_are_up_to_date() -> None:
     committed = Path(__file__).resolve().parents[3] / "docs" / "database.md"
     assert committed.read_text() == docs.render(), "run `make db-docs`"
+
+
+def test_migrations_wait_for_the_database_to_resolve_and_listen() -> None:
+    import socket
+
+    from sentinel.db.migrate import wait_for_database
+
+    failures = [
+        socket.gaierror(-3, "Temporary failure in name resolution"),
+        ConnectionRefusedError(),
+    ]
+    slept: list[float] = []
+
+    async def ping(url: str) -> None:
+        if failures:
+            raise failures.pop(0)
+
+    wait_for_database("postgresql+asyncpg://x/y", ping=ping, sleep=slept.append)
+    assert slept == [1.0, 1.0]
+
+
+def test_migrations_stop_waiting_after_the_timeout_and_never_retry_other_errors() -> None:
+    import pytest
+
+    from sentinel.db.migrate import wait_for_database
+
+    async def unreachable(url: str) -> None:
+        raise ConnectionRefusedError
+
+    with pytest.raises(ConnectionRefusedError):
+        wait_for_database("u", timeout_s=0, ping=unreachable, sleep=lambda _: None)
+
+    async def broken(url: str) -> None:
+        raise ValueError("not a connection problem")
+
+    with pytest.raises(ValueError, match="not a connection"):
+        wait_for_database("u", ping=broken, sleep=lambda _: None)

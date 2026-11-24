@@ -573,7 +573,9 @@ def test_disk_filling_up_raises_a_host_signal(installed: Installed, admin: Admin
         found = eventually(host_signal, timeout=360, every=10)
         assert found[0]["severity"] == "critical"
         host_entity = found[0]["entity_id"]
-        assert host_entity  # attributed to the host entity
+        assert host_entity
+        # The host, not the agent's own service (its metrics carry the agent's `job`).
+        assert admin.get(f"/api/v1/entities/{host_entity}")["type"] == "host"
 
         # An app on this host: discovered first (it runs_on the host), then failing.
         service = f"shop-{installed.nonce[:6]}"

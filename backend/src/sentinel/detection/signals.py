@@ -193,14 +193,19 @@ class AlertReconciler:
       resolved, saying why.
     - **Firing, never sent:** its notification log survives a restart. A new
       episode of an alert it had notified before is taken as a repeat, and not
-      sent until ``repeat_interval``. An active alert with no firing signal is
-      taken in here, exactly as the webhook would have (same idempotent upsert).
+      sent until ``repeat_interval``. An active alert with no firing signal,
+      firing for at least ``take_in_after`` (by then the webhook would have
+      delivered it), is taken in here, exactly as the webhook would have (same
+      idempotent upsert). Taking alerts any sooner races the webhook: an alert
+      that resolves within ``group_wait`` is then never notified at all, and
+      its signal could only be resolved here, minutes later.
 
     If Alertmanager can't be reached, nothing changes.
     """
 
     fetch: ActiveFetch
     min_age: timedelta = timedelta(minutes=5)
+    take_in_after: timedelta = timedelta(minutes=2)
     missing: set[uuid.UUID] = field(default_factory=set)
 
     async def run(self, db: AsyncSession, *, now: datetime) -> list[uuid.UUID]:
@@ -211,7 +216,7 @@ class AlertReconciler:
             self.missing.clear()  # no answer: no evidence either way
             return []
         active = {a["fingerprint"] for a in alerts}
-        await self._take_in(db, alerts)
+        await self._take_in(db, alerts, now=now)
         firing = (
             await db.scalars(
                 select(Signal).where(
@@ -242,7 +247,9 @@ class AlertReconciler:
             log.info("alert_signals_reconciled", resolved=len(resolved))
         return resolved
 
-    async def _take_in(self, db: AsyncSession, alerts: list[dict[str, Any]]) -> None:
+    async def _take_in(
+        self, db: AsyncSession, alerts: list[dict[str, Any]], *, now: datetime
+    ) -> None:
         known = set(
             (
                 await db.scalars(
@@ -269,6 +276,8 @@ class AlertReconciler:
                 )
             except ValidationError:
                 continue
+            if alert.startsAt > now - self.take_in_after:
+                continue  # still the webhook's to deliver
             _, outcome = await upsert_alert(db, alert)
             taken += outcome == "created"
         if taken:

@@ -44,7 +44,7 @@ incident. These never open one, but can join one:
 | Relation | Source |
 |---|---|
 | service `runs_on` container, container `runs_on` host | Telemetry resource attributes (entity discovery, Step 8) |
-| service `uses` service | The trace store's call graph: who called whom in the last hour. It's refreshed every 2 minutes, and services are matched by name within one environment |
+| service `uses` service | Calls seen in traces. The gateway's `servicegraph` connector counts client/server span pairs as they pass (`traces_service_graph_request_total{client, server}` in Prometheus). Every 2 minutes, SENTINEL turns the last hour's edges into relations, matching services by name within the edge's environment. The trace store itself isn't queried: that loads every trace of the window into memory |
 
 ## Severity
 

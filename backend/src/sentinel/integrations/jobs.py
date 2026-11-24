@@ -10,8 +10,8 @@ from sentinel.integrations.entities import (
     DependencyFetch,
     Query,
     discover,
-    jaeger_dependencies,
     prometheus_query,
+    service_graph,
     store_dependencies,
 )
 from sentinel.integrations.gate import IngestGate
@@ -41,7 +41,7 @@ async def discovery_pass(gate: IngestGate, query: Query) -> None:
 
 
 async def dependency_pass(gate: IngestGate, fetch: DependencyFetch) -> None:
-    """Service ``uses`` relations from the trace store's call graph (I12)."""
+    """Service ``uses`` relations from the gateway's service graph (I12)."""
     edges = await fetch()
     async with session_scope(gate.session_factory) as db:
         await store_dependencies(db, edges)
@@ -50,7 +50,7 @@ async def dependency_pass(gate: IngestGate, fetch: DependencyFetch) -> None:
 def start(gate: IngestGate) -> list[asyncio.Task[None]]:
     settings = gate.settings
     query = prometheus_query(settings.prometheus_url)
-    dependencies = jaeger_dependencies(settings.jaeger_url)
+    dependencies = service_graph(query)
     return [
         asyncio.create_task(
             forever(

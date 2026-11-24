@@ -1,7 +1,7 @@
 # Step 12 report — Entity-aware correlation, severity, lifecycle, timeline
 
 **Status:** 🟡 built and tested locally; CI results pending.
-**PR:** (link added after opening). Also [aviro-shop PR #4](https://github.com/asadsheikh1/aviro-shop/pull/4) (deploy events; see bug 3).
+**PR:** [PR #12](https://github.com/asadsheikh1/sentinel/pull/12). Also [aviro-shop PR #4](https://github.com/asadsheikh1/aviro-shop/pull/4) (deploy events; see bug 3).
 **Date:** 2026-11-25
 
 ## What was built
@@ -9,7 +9,7 @@
 | Area | Files |
 |---|---|
 | Correlator | `sentinel/detection/correlator.py`: every 15 s, each signal not yet in an incident joins an active incident within 15 minutes, for the first reason that holds: `same_entity`, `same_service`, `related_entity` (topology, either direction, ≤ 3 hops of `runs_on`/`uses`/`fronts`), `shared_trace`, `deploy_window`. Otherwise a firing critical/warning signal opens one. A pure core (`match`, `related`), and one transaction per pass under an advisory lock |
-| Topology from traces (I12) | `integrations/entities.py: jaeger_dependencies, store_dependencies`: the trace store's call graph becomes `uses` relations between services of the same environment (source `traces`), every 2 minutes |
+| Topology from traces (I12) | `deploy/otel/gateway.yaml`: a `servicegraph` connector counts who calls whom as spans pass. `integrations/entities.py: service_graph, store_dependencies` turn the last hour's edges in Prometheus into `uses` relations between services of the same environment (source `traces`), every 2 minutes |
 | Severity (B8) | `sentinel/incidents/severity.py`: rules R1–R4. Error ratio, breadth (services involved), entity criticality. Raised automatically, never lowered; every change on the timeline with its rule |
 | Lifecycle | `sentinel/incidents/lifecycle.py`: the state machine, with `false_positive` from anywhere. Mitigated automatically after every signal has been resolved for 5 minutes; a new firing signal re-opens it |
 | Timeline (B9) | `incident_events`, append-only: a trigger rejects UPDATE, and the app role has no UPDATE/DELETE |
@@ -41,12 +41,13 @@
 
 | Suite | Result |
 |---|---|
-| `make test-all` (unit + DB, coverage gate 85%) | 698 passed, coverage 93.8% |
+| `make test-all` (unit + DB, coverage gate 85%) | 701 passed, coverage 93.8% |
 | New unit tests (`test_incidents_unit.py`: state machine, severity table, topology, matching) | 70 passed |
-| New DB tests (`test_incidents.py`: correlation tables, lifecycle, timeline, API, deployment linking, reconciliation) | 13 passed |
+| New DB tests (`test_incidents.py`: correlation tables, lifecycle, timeline, API, deployment linking, reconciliation, host attribution) | 14 passed |
 | `make test-rules` (promtool) | all passed, incl. the new `value` annotation |
-| `make test-gateway` (live stack) | 23 passed; the 5xx burst now also opens an incident |
-| CI | pending |
+| `make test-gateway` (live stack) | 23 passed; the 5xx burst now also opens an incident. The delivery test passed 3 times in a row (it failed 1 in 3 before bug 10's fix); 0 Jaeger restarts |
+| CI, first run | 3 failures, which became bugs 9–12 below |
+| CI, after the fixes | pending |
 
 **Checking that the tests can actually fail.** I broke eight guarantees in the source:
 - topology in one direction only;
@@ -79,10 +80,17 @@ All were found in the live runs, and every fix has a regression test.
    - an incident mitigates only after 5 quiet minutes.
 8. **Gateway e2e tests left integrations behind:** 298 of them. Each one goes stale and, since this step, opens a telemetry-gap incident on the stack the tests ran against. The test fixture now disables what it created.
 
+Four more were found by the first CI run:
+
+9. **Reading the topology from the trace store killed it.** Jaeger's dependencies API loads every trace of the window into memory. Asked for an hour every 5 s (the fast test stack), Jaeger was **OOM-killed 61 times in 15 minutes** at its 512 MB limit. The edges now come from the gateway's `servicegraph` connector, through Prometheus. Live, the same five AVIRO relations appeared, with 0 Jaeger restarts.
+10. **The reconciler raced the webhook.** It took an alert in seconds after it fired, before Alertmanager's 10 s `group_wait`. An alert that resolved inside that window was then never notified at all, so its signal stayed firing until the reconciler's own 5-minute check (CI's delivery test, reproduced locally 1 time in 3). Alerts are now taken in only after 2 minutes active.
+11. **Host alerts were attributed to the agent, not the host** (a Step 10 bug). Host metrics carry the reporting agent's `job` label, and the resolver's service fallback took that as the alert's service. So in CI's S13 run, the disk alert and the app's errors became two incidents: the agent's service and the app are siblings on the host, not related. The resolver now follows the alert's `entity_type` label. The CI test now checks the entity type, not just that there is one.
+12. **A migration could fail on a DNS hiccup.** In CI, `sentinel db upgrade` started before Podman's DNS knew `postgres` ("Temporary failure in name resolution"), the same flake as in Step 9. It now waits up to 60 s for the database to accept connections, and retries only connection failures.
+
 ## Decisions worth reviewing
 
 1. **`primary_entity_id` and `incident_entities` instead of `primary_service_id` and `incident_services`.** This follows the same entity-based design as Steps 10–11; the generalisation was already noted in the database design.
-2. **`uses` relations from the trace store's call graph.** This is I12's "relations", and without it S01's gateway errors would be a second incident. Traces name services by `service.name`, so an edge links same-named services within one environment.
+2. **`uses` relations from traces, via a new `servicegraph` connector in the gateway** (a change to the approved gateway configuration). This is I12's "relations", and without it S01's gateway errors would be a second incident. Querying the trace store instead isn't safe (bug 9). Traces name services by `service.name`, so an edge links same-named services within its environment.
 3. **Attach reasons and event types added:**
    - reasons `first_signal`, `same_entity`, `related_entity` beyond the designed `same_service`, `shared_trace`, `deploy_window`;
    - events `opened` and `investigation_queued`.

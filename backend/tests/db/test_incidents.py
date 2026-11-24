@@ -467,7 +467,7 @@ def test_trace_dependencies_become_uses_relations_within_an_environment(settings
 
     async def go(db: Any) -> list[tuple[uuid.UUID, uuid.UUID, str, str]]:
         written = await store_dependencies(
-            db, [(f"gw-{tag}", f"api-{tag}"), (f"gw-{tag}", "nobody")]
+            db, [(f"gw-{tag}", f"api-{tag}", "dev"), (f"gw-{tag}", "nobody", None)]
         )
         assert written == 1
         rows = await db.execute(
@@ -582,12 +582,14 @@ def test_an_alert_the_webhook_never_delivered_is_taken_from_alertmanager(
     async def fetch() -> list[dict[str, Any]]:
         return [alert, suppressed]
 
-    reconciler = AlertReconciler(fetch)
-    for _ in range(2):  # a second pass finds it firing: nothing more
-        _db(settings, lambda db: reconciler.run(db, now=t0 + timedelta(minutes=1)))
-
     async def taken(db: Any) -> list[Signal]:
         return list((await db.scalars(select(Signal).where(Signal.service_name == service))).all())
+
+    reconciler = AlertReconciler(fetch)
+    _db(settings, lambda db: reconciler.run(db, now=t0 + timedelta(seconds=30)))
+    assert _db(settings, taken) == []  # too young: the webhook's to deliver
+    for _ in range(2):  # a second pass finds it firing: nothing more
+        _db(settings, lambda db: reconciler.run(db, now=t0 + timedelta(minutes=3)))
 
     (signal_,) = _db(settings, taken)
     assert signal_.status is SignalStatus.FIRING
@@ -615,3 +617,27 @@ def test_automatic_reassessment_never_lowers_severity(settings: Settings, t0: da
            title="pricing slow again", severity="warning")  # fmt: skip
     correlate(settings, t0 + timedelta(minutes=2))  # the rules alone say SEV3
     assert incident_of(settings, first).severity is Severity.SEV1  # type: ignore[union-attr]
+
+
+def test_a_host_alert_is_about_the_host_not_the_agent_that_reported_it(settings: Settings) -> None:
+    """Host metrics carry the agent's `job`; the alert must still be the host's (seen in CI)."""
+    from sentinel.integrations.entities import resolve_entity
+
+    tag = uuid.uuid4().hex[:6]
+
+    async def go(db: Any) -> tuple[uuid.UUID, uuid.UUID | None, uuid.UUID | None]:
+        host = Entity(type=EntityType.HOST, key=f"vm-{tag}", display_name=f"vm-{tag}")
+        agent = Entity(type=EntityType.SERVICE, key=f"sentinel/agent-{tag}@ci", display_name="agent",  # noqa: E501
+                       attributes={"service.name": f"agent-{tag}", "service.namespace": "sentinel"})  # fmt: skip  # noqa: E501
+        db.add_all([host, agent])
+        await db.flush()
+        labels = {"alertname": "HostFilesystemFull", "entity_type": "host",
+                  "host_name": f"vm-{tag}", "job": f"sentinel/agent-{tag}"}  # fmt: skip
+        as_host = await resolve_entity(db, labels)
+        # Without entity_type (e.g. a hand-written rule), the job still names a service.
+        legacy = await resolve_entity(db, {k: v for k, v in labels.items() if k != "entity_type"})
+        return host.id, as_host, legacy
+
+    host, as_host, legacy = _db(settings, go)
+    assert as_host == host
+    assert legacy != host  # the old behaviour, kept for alerts that don't say

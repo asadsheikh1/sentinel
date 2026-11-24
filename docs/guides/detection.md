@@ -58,8 +58,10 @@ fires, and the packs' tests include cases that must stay quiet:
 | `error_group_new` | A log error SENTINEL hasn't seen before in that service (or host unit). Resolves after 10 quiet minutes |
 | `error_group_spike` | A known error at 5× its usual rate (below) |
 
-Signals are linked to the inventory entity they're about. The lookup checks, in
-order: the health check, then the container, the service, and the host.
+Signals are linked to the inventory entity they're about. An alert's
+`entity_type` label decides first: a host alert belongs to the host, even
+though host metrics carry the reporting agent's `job`. Otherwise the lookup
+checks, in order: the health check, the container, the service, then the host.
 
 ### Telemetry gaps: agent problem, or host down?
 
@@ -195,9 +197,10 @@ Step 12:
   "no longer active in Alertmanager".
 - **A firing alert that was never sent.** Alertmanager's notification log
   survives a restart. It can take a new episode of an alert it notified before
-  as a repeat, and hold it back for the 1-hour repeat interval. An active alert
-  with no firing signal is taken in through the same idempotent path as the
-  webhook.
+  as a repeat, and hold it back for the 1-hour repeat interval. An alert that
+  has been active for 2 minutes with no firing signal is taken in through the
+  same idempotent path as the webhook. Not sooner: that would race the webhook,
+  and an alert that resolves within `group_wait` is never notified at all.
 
 If Alertmanager can't be reached, nothing changes.
 
