@@ -549,6 +549,23 @@ def _dump_incidents(admin: Admin, host_entity: str, svc: dict[str, Any]) -> None
     print("host entity:", admin.get(f"/api/v1/entities/{host_entity}"))
     print("service entity:", svc)
     print("service relations:", admin.get(f"/api/v1/entities/{svc['id']}/relations"))
+    name = svc["attributes"]["service.name"]
+    print("error groups:", admin.get(f"/api/v1/error-groups?service={name}"))
+    print("signals:", [(x["kind"], x["status"], x["entity_id"]) for x in
+                       admin.get(f"/api/v1/signals?service={name}")])  # fmt: skip
+    loki = httpx.get(
+        f"{LOKI}/loki/api/v1/query_range",
+        params={"query": f'{{service_name="{name}"}}', "limit": "5",
+                "start": str(time.time_ns() - 900 * 10**9)},
+        timeout=10,
+    )  # fmt: skip
+    print("loki:", loki.status_code, loki.text[:1500])
+    api_log = subprocess.run(
+        ["podman", "logs", "--tail", "400", "sentinel_api_1"], capture_output=True, text=True
+    )
+    for line in (api_log.stdout + api_log.stderr).splitlines():
+        if any(k in line for k in ("error_poll", "error_group", "background_job_failed")):
+            print("api:", line[:400])
     for inc in admin.get("/api/v1/incidents?limit=20"):
         d = admin.get(f"/api/v1/incidents/{inc['id']}")
         print(inc["ref"], inc["status"], inc["title"])
