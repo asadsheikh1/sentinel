@@ -544,6 +544,19 @@ def _app_logs(service: str, host: str, n: int, *, error: bool) -> dict[str, Any]
     }
 
 
+def _dump_incidents(admin: Admin, host_entity: str, svc: dict[str, Any]) -> None:
+    """On failure: what the correlator saw (printed to the CI log)."""
+    print("host entity:", admin.get(f"/api/v1/entities/{host_entity}"))
+    print("service entity:", svc)
+    print("service relations:", admin.get(f"/api/v1/entities/{svc['id']}/relations"))
+    for inc in admin.get("/api/v1/incidents?limit=20"):
+        d = admin.get(f"/api/v1/incidents/{inc['id']}")
+        print(inc["ref"], inc["status"], inc["title"])
+        print("  entities:", [(e["type"], e["key"], e["role"]) for e in d["entities"]])
+        for s in d["signals"]:
+            print("  signal:", s["kind"], s["reason"], s["entity_id"], s["starts_at"], s["labels"])
+
+
 def test_disk_filling_up_raises_a_host_signal(installed: Installed, admin: Admin) -> None:
     """S13: a fill file pushes the root filesystem past 90% (a host signal), and an app
     on that host fails to write (its errors): one incident with both entities (Step 12).
@@ -598,7 +611,11 @@ def test_disk_filling_up_raises_a_host_signal(installed: Installed, admin: Admin
                     return [detail]
             return []
 
-        incident = eventually(one_incident, timeout=120, every=5)[0]
+        try:
+            incident = eventually(one_incident, timeout=120, every=5)[0]
+        except BaseException:
+            _dump_incidents(admin, host_entity, svc)
+            raise
         kinds = {s["kind"] for s in incident["signals"]}
         assert {"prom_alert", "error_group_new"} <= kinds
         assert "related_entity" in {s["reason"] for s in incident["signals"]}
