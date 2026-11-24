@@ -544,9 +544,10 @@ def _app_logs(service: str, host: str, n: int, *, error: bool) -> dict[str, Any]
     }
 
 
-def _dump_incidents(admin: Admin, host_entity: str, svc: dict[str, Any]) -> None:
+def _dump_incidents(admin: Admin, host_entity: str | None, svc: dict[str, Any]) -> None:
     """On failure: what the correlator saw (printed to the CI log)."""
-    print("host entity:", admin.get(f"/api/v1/entities/{host_entity}"))
+    if host_entity:
+        print("host entity:", admin.get(f"/api/v1/entities/{host_entity}"))
     print("service entity:", svc)
     print("service relations:", admin.get(f"/api/v1/entities/{svc['id']}/relations"))
     name = svc["attributes"]["service.name"]
@@ -566,6 +567,11 @@ def _dump_incidents(admin: Admin, host_entity: str, svc: dict[str, Any]) -> None
     for line in (api_log.stdout + api_log.stderr).splitlines():
         if any(k in line for k in ("error_poll", "error_group", "background_job_failed")):
             print("api:", line[:400])
+    loki_log = subprocess.run(
+        ["podman", "logs", "--tail", "60", "sentinel_loki_1"], capture_output=True, text=True
+    )
+    for line in (loki_log.stdout + loki_log.stderr).splitlines():
+        print("loki log:", line[:400])
     for inc in admin.get("/api/v1/incidents?limit=20"):
         d = admin.get(f"/api/v1/incidents/{inc['id']}")
         print(inc["ref"], inc["status"], inc["title"])
@@ -575,14 +581,38 @@ def _dump_incidents(admin: Admin, host_entity: str, svc: dict[str, Any]) -> None
 
 
 def test_disk_filling_up_raises_a_host_signal(installed: Installed, admin: Admin) -> None:
-    """S13: a fill file pushes the root filesystem past 90% (a host signal), and an app
-    on that host fails to write (its errors): one incident with both entities (Step 12).
+    """S13: an app on this host fails to write (its errors), and a fill file pushes the
+    root filesystem past 90% (a host signal): one incident with both entities (Step 12).
 
     The app's errors are sent by the test, as the app would send them: the disk is
-    filled to 93%, not 100%, so nothing on the runner really fails to write."""
+    filled to 93%, not 100%, so nothing on the runner really fails to write. They're
+    sent *before* the fill because here SENTINEL's own stores share this disk (Loki's
+    ingester stopped accepting writes during the fill in CI); in a deployment
+    SENTINEL runs elsewhere. The correlation doesn't depend on the order."""
     if TARGET != "host":
         pytest.skip("needs a real disk (a VM); a test container's filesystems are not physical")
     m = installed.machine
+
+    # An app on this host: discovered first (it runs_on the host), then failing.
+    service = f"shop-{installed.nonce[:6]}"
+    app = admin.create(name=f"e2e-app-{service}", kind="otel_app", expected_signals=["logs"])
+    token = {"Authorization": f"Bearer {app['ingest_token']}"}
+    with httpx.Client(timeout=10) as http:
+        started = _app_logs(service, installed.hostname, 1, error=False)
+        assert http.post(f"{INGEST}/v1/logs", json=started, headers=token).status_code == 200
+        svc = eventually(
+            lambda: admin.get(f"/api/v1/entities?type=service&q={service}"), timeout=60
+        )[0]
+        failing = _app_logs(service, installed.hostname, 20, error=True)
+        assert http.post(f"{INGEST}/v1/logs", json=failing, headers=token).status_code == 200
+    try:
+        eventually(
+            lambda: _signals(admin, kind="error_group_new", service=service), timeout=90, every=5
+        )
+    except BaseException:
+        _dump_incidents(admin, None, svc)
+        raise
+
     fill = "/root/sentinel-e2e-fill"  # on the root filesystem, root-only
     # Reserve (instantly, no writes) enough to reach 93% used.
     m.sh(
@@ -606,19 +636,6 @@ def test_disk_filling_up_raises_a_host_signal(installed: Installed, admin: Admin
         assert host_entity
         # The host, not the agent's own service (its metrics carry the agent's `job`).
         assert admin.get(f"/api/v1/entities/{host_entity}")["type"] == "host"
-
-        # An app on this host: discovered first (it runs_on the host), then failing.
-        service = f"shop-{installed.nonce[:6]}"
-        app = admin.create(name=f"e2e-app-{service}", kind="otel_app", expected_signals=["logs"])
-        token = {"Authorization": f"Bearer {app['ingest_token']}"}
-        with httpx.Client(timeout=10) as http:
-            started = _app_logs(service, installed.hostname, 1, error=False)
-            assert http.post(f"{INGEST}/v1/logs", json=started, headers=token).status_code == 200
-            svc = eventually(
-                lambda: admin.get(f"/api/v1/entities?type=service&q={service}"), timeout=60
-            )[0]
-            failing = _app_logs(service, installed.hostname, 20, error=True)
-            assert http.post(f"{INGEST}/v1/logs", json=failing, headers=token).status_code == 200
 
         def one_incident() -> list[dict[str, Any]]:
             for inc in admin.get("/api/v1/incidents?status=open"):
