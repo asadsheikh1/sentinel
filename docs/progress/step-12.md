@@ -1,6 +1,6 @@
 # Step 12 report — Entity-aware correlation, severity, lifecycle, timeline
 
-**Status:** 🟡 built and tested locally; CI results pending.
+**Status:** ✅ built and tested; all 10 CI checks green.
 **PR:** [PR #12](https://github.com/asadsheikh1/sentinel/pull/12). Also [aviro-shop PR #4](https://github.com/asadsheikh1/aviro-shop/pull/4) (deploy events; see bug 3).
 **Date:** 2026-11-25
 
@@ -26,7 +26,7 @@
 | Criterion | Result |
 |---|---|
 | S01 → 1 incident with linked deployment | ✅ Real AVIRO under load from 20 synthetic shoppers, `make deploy REF=scenario/S01-bad`, with no restarts in between: **one incident** (INC-6). Details below the table |
-| Disk fill on the AVIRO host plus resulting errors → 1 incident with both entities | ✅ DB test with the real topology shape: host ← container ← service. A host `HostFilesystemFull` signal and a 5xx signal of the service on it make one incident, with the host as origin and the service affected. An unrelated host's disk alert stays separate. ⏳ Live in CI, on the fresh Ubuntu VM: a real `HostFilesystemFull` from the agent, plus an app on that host logging `ENOSPC` errors through the real ingest path → one incident with both entities. The app's errors are sent by the test, because the disk is filled to 93%, not 100%. Not run locally: filling the Podman VM's disk would grow its image on your Mac by about 40 GB |
+| Disk fill on the AVIRO host plus resulting errors → 1 incident with both entities | ✅ DB test with the real topology shape: host ← container ← service. A host `HostFilesystemFull` signal and a 5xx signal of the service on it make one incident, with the host as origin and the service affected. An unrelated host's disk alert stays separate. ✅ Live in CI, on the fresh Ubuntu 24.04 VM: an app on that host logging `ENOSPC` errors through the real ingest path, plus a real `HostFilesystemFull` from the agent (attributed to the host entity), formed **one incident with both entities**, joined by `related_entity`. The app's errors are sent by the test (the disk is filled to 93%, not 100%), before the fill (bug 13). Not run locally: filling the Podman VM's disk would grow its image on your Mac by about 40 GB |
 | S08 (3× traffic, no faults) → 0 incidents | ✅ 60 synthetic shoppers instead of 20 for 15 minutes, watched for 20: traffic peaked at **48.5 req/s against a 15.6 req/s baseline (3.1×)**, with 42,714 gateway requests. **0 incidents, 0 signals** |
 
 **S01 in detail (INC-6):**
@@ -47,7 +47,7 @@
 | `make test-rules` (promtool) | all passed, incl. the new `value` annotation |
 | `make test-gateway` (live stack) | 23 passed; the 5xx burst now also opens an incident. The delivery test passed 3 times in a row (it failed 1 in 3 before bug 10's fix); 0 Jaeger restarts |
 | CI, first run | 3 failures, which became bugs 9–12 below |
-| CI, after the fixes | pending |
+| CI, after the fixes | all 10 checks green, incl. the live S13 test on the Ubuntu VM |
 
 **Checking that the tests can actually fail.** I broke eight guarantees in the source:
 - topology in one direction only;
