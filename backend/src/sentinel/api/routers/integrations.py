@@ -22,7 +22,7 @@ from sentinel.db.models import (
     IntegrationKind,
     IntegrationStatus,
 )
-from sentinel.integrations import agent_config
+from sentinel.integrations import agent_config, verification
 from sentinel.integrations.agent_config import AgentConfigError, AgentMode
 from sentinel.integrations.gate import TokenInfo
 from sentinel.integrations.service import IntegrationService
@@ -84,10 +84,22 @@ class SignalOut(BaseModel):
     last_error: str | None
 
 
+class CheckItemOut(BaseModel):
+    key: str
+    label: str
+    done: bool
+    required: bool
+    detail: str | None
+    at: datetime | None
+
+
 class StatusOut(BaseModel):
     id: uuid.UUID
     status: IntegrationStatus
     status_reason: str | None
+    checklist: list[CheckItemOut] = Field(
+        default_factory=list, description="The live setup checklist (integrations design §5.2)."
+    )
     expected_signals: list[str]
     signals: list[SignalOut]
 
@@ -257,15 +269,38 @@ async def revoke_token(
 
 
 @router.get("/{integration_id}/status", response_model=StatusOut)
-async def integration_status(integration_id: uuid.UUID, svc: Service, _: Viewer) -> StatusOut:
+async def integration_status(
+    integration_id: uuid.UUID, request: Request, svc: Service, _: Viewer
+) -> StatusOut:
+    """Health, per-signal freshness, and the live setup checklist."""
     integration = await _get(svc, integration_id)
     signals = await svc.signals(integration_id)
+    settings = request.app.state.settings
+    expected_hash = None
+    if integration.kind in verification.AGENT_KINDS:
+        try:
+            expected_hash = agent_config.render(
+                kind=integration.kind,
+                environment=integration.environment,
+                config=integration.config,
+                agent_dir=_agent_dir(request),
+            ).config_hash
+        except AgentConfigError:
+            expected_hash = None
+    items = await verification.checklist(
+        svc.db,
+        integration,
+        marker_seen=verification.loki_marker(settings.loki_url),
+        reported_hashes=verification.prometheus_hashes(settings.prometheus_url),
+        expected_hash=expected_hash,
+    )
     return StatusOut(
         id=integration.id,
         status=integration.status,
         status_reason=integration.status_reason,
         expected_signals=integration.expected_signals,
         signals=[SignalOut.model_validate(s) for s in signals],
+        checklist=[CheckItemOut(**vars(i)) for i in items],
     )
 
 
@@ -356,11 +391,14 @@ async def list_entities(
     _: Viewer,
     type: EntityType | None = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
+    integration: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[EntityOut]:
     stmt = select(Entity).order_by(Entity.type, Entity.key).limit(limit)
     if type is not None:
         stmt = stmt.where(Entity.type == type)
+    if integration is not None:
+        stmt = stmt.where(Entity.integration_ids.contains([integration]))
     if q:
         escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"

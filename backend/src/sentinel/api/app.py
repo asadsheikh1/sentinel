@@ -195,7 +195,10 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
         dependencies=[Depends(authenticated())],
     )
     async def meta() -> MetaOut:
-        return MetaOut(version=__version__, env=settings.env.value)
+        return MetaOut(
+            version=__version__, env=settings.env.value,
+            ingest_endpoint=settings.agent_public_endpoint,
+        )  # fmt: skip
 
     for module in (auth, users, api_keys, audit, integrations, ingest_auth, agent):
         app.include_router(module.router)

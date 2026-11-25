@@ -566,7 +566,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Integration Status */
+        /**
+         * Integration Status
+         * @description Health, per-signal freshness, and the live setup checklist.
+         */
         get: operations["integration_status_api_v1_integrations__integration_id__status_get"];
         put?: never;
         post?: never;
@@ -990,6 +993,21 @@ export interface components {
             reason: string | null;
             /** Total */
             total: number;
+        };
+        /** CheckItemOut */
+        CheckItemOut: {
+            /** At */
+            at: string | null;
+            /** Detail */
+            detail: string | null;
+            /** Done */
+            done: boolean;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Required */
+            required: boolean;
         };
         /**
          * CheckKind
@@ -1575,6 +1593,11 @@ export interface components {
         MetaOut: {
             /** Env */
             env: string;
+            /**
+             * Ingest Endpoint
+             * @description Where agents and apps send telemetry (OTLP over HTTP, with an ingest token).
+             */
+            ingest_endpoint: string;
             /** Version */
             version: string;
         };
@@ -1680,6 +1703,11 @@ export interface components {
         SignalStatus: "firing" | "resolved";
         /** StatusOut */
         StatusOut: {
+            /**
+             * Checklist
+             * @description The live setup checklist (integrations design §5.2).
+             */
+            checklist?: components["schemas"]["CheckItemOut"][];
             /** Expected Signals */
             expected_signals: string[];
             /**
@@ -2316,6 +2344,7 @@ export interface operations {
             query?: {
                 type?: components["schemas"]["EntityType"] | null;
                 q?: string | null;
+                integration?: string | null;
                 limit?: number;
             };
             header?: never;

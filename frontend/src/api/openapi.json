@@ -570,6 +570,59 @@
         "title": "AuditVerifyOut",
         "type": "object"
       },
+      "CheckItemOut": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "done": {
+            "title": "Done",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "done",
+          "required",
+          "detail",
+          "at"
+        ],
+        "title": "CheckItemOut",
+        "type": "object"
+      },
       "CheckKind": {
         "enum": [
           "http",
@@ -2179,6 +2232,11 @@
             "title": "Env",
             "type": "string"
           },
+          "ingest_endpoint": {
+            "description": "Where agents and apps send telemetry (OTLP over HTTP, with an ingest token).",
+            "title": "Ingest Endpoint",
+            "type": "string"
+          },
           "version": {
             "title": "Version",
             "type": "string"
@@ -2186,7 +2244,8 @@
         },
         "required": [
           "version",
-          "env"
+          "env",
+          "ingest_endpoint"
         ],
         "title": "MetaOut",
         "type": "object"
@@ -2388,6 +2447,14 @@
       },
       "StatusOut": {
         "properties": {
+          "checklist": {
+            "description": "The live setup checklist (integrations design \u00a75.2).",
+            "items": {
+              "$ref": "#/components/schemas/CheckItemOut"
+            },
+            "title": "Checklist",
+            "type": "array"
+          },
           "expected_signals": {
             "items": {
               "type": "string"
@@ -3532,6 +3599,23 @@
                 }
               ],
               "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "integration",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Integration"
             }
           },
           {
@@ -4701,6 +4785,7 @@
     },
     "/api/v1/integrations/{integration_id}/status": {
       "get": {
+        "description": "Health, per-signal freshness, and the live setup checklist.",
         "operationId": "integration_status_api_v1_integrations__integration_id__status_get",
         "parameters": [
           {
