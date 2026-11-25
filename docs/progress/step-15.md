@@ -1,7 +1,7 @@
 # Step 15 report: LLM gateway, call logging and the model benchmark
 
 **Status:** ✅ built and tested; the benchmark has been measured. **D2 needs your decision** (see below).
-**PR:** see the branch `step-15-llm-gateway`.
+**PR:** [PR #15](https://github.com/asadsheikh1/sentinel/pull/15).
 **Date:** 2026-11-25
 
 ## What was built
