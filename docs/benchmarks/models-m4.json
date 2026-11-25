@@ -1,6 +1,6 @@
 {
   "environment": {
-    "date": "2026-11-25T11:02:56+00:00",
+    "date": "2026-11-25T11:26:16+00:00",
     "chip": "Apple M4",
     "memory_gb": 24,
     "macos": "26.6.2",
@@ -8,12 +8,12 @@
     "podman_machine": "true 8GiB 4",
     "containers_running": 9,
     "memory": {
-      "free_percent": 61,
-      "swap_used_mb": 3670.19
+      "free_percent": 67,
+      "swap_used_mb": 3980.31
     },
     "memory_end": {
-      "free_percent": 60,
-      "swap_used_mb": 3996.31
+      "free_percent": 87,
+      "swap_used_mb": 9643.75
     }
   },
   "settings": {
@@ -30,6 +30,247 @@
     ]
   },
   "models": [
+    {
+      "model": "qwen3:14b",
+      "details": {
+        "parameter_size": "14.8B",
+        "quantization": "Q4_K_M",
+        "family": "qwen3",
+        "license": "Apache License"
+      },
+      "cold_load_ms": 5828,
+      "loaded_size_mb": 11141,
+      "loaded_vram_mb": 11141,
+      "memory_before": {
+        "free_percent": 67,
+        "swap_used_mb": 3980.31
+      },
+      "memory_loaded": {
+        "free_percent": 17,
+        "swap_used_mb": 6150.62
+      },
+      "memory_after": {
+        "free_percent": 42,
+        "swap_used_mb": 9659.75
+      },
+      "prefill": {
+        "input_tokens": 6285,
+        "prompt_tokens_per_s": 80.3,
+        "ttft_ms": 78244
+      },
+      "summary": {
+        "think_off": {
+          "runs": 6,
+          "first_try_valid": 6,
+          "valid_after_retries": 6,
+          "citations_valid": 6,
+          "category_correct": 4,
+          "tokens_per_s_median": 5.3,
+          "ttft_ms_median": 1773.5,
+          "first_answer_ms_median": 1773.5,
+          "latency_s_median": 134.6,
+          "latency_s_max": 164.727,
+          "output_tokens_median": 683.0,
+          "hit_output_limit": 0
+        },
+        "think_on": {
+          "runs": 3,
+          "first_try_valid": 3,
+          "valid_after_retries": 3,
+          "citations_valid": 3,
+          "category_correct": 2,
+          "tokens_per_s_median": 6.1,
+          "ttft_ms_median": 943,
+          "first_answer_ms_median": 95038,
+          "latency_s_median": 165.7,
+          "latency_s_max": 207.32,
+          "output_tokens_median": 882,
+          "hit_output_limit": 0
+        }
+      },
+      "runs": [
+        {
+          "scenario": "bad_deploy",
+          "think": false,
+          "seed": 1,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 108511,
+          "ttft_ms": 3194,
+          "first_content_ms": 3194,
+          "input_tokens": 448,
+          "output_tokens": 670,
+          "tokens_per_s": 6.4,
+          "citations_valid": true,
+          "top_category": "code_change",
+          "category_correct": true,
+          "hypotheses": 5,
+          "done_reason": "stop"
+        },
+        {
+          "scenario": "disk_full",
+          "think": false,
+          "seed": 1,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 147775,
+          "ttft_ms": 6629,
+          "first_content_ms": 6629,
+          "input_tokens": 458,
+          "output_tokens": 749,
+          "tokens_per_s": 5.3,
+          "citations_valid": true,
+          "top_category": "infrastructure",
+          "category_correct": false,
+          "hypotheses": 5,
+          "done_reason": "stop"
+        },
+        {
+          "scenario": "config_change",
+          "think": false,
+          "seed": 1,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 134959,
+          "ttft_ms": 6178,
+          "first_content_ms": 6178,
+          "input_tokens": 407,
+          "output_tokens": 693,
+          "tokens_per_s": 5.4,
+          "citations_valid": true,
+          "top_category": "config_change",
+          "category_correct": true,
+          "hypotheses": 5,
+          "done_reason": "stop"
+        },
+        {
+          "scenario": "bad_deploy",
+          "think": false,
+          "seed": 2,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 123704,
+          "ttft_ms": 243,
+          "first_content_ms": 243,
+          "input_tokens": 448,
+          "output_tokens": 658,
+          "tokens_per_s": 5.3,
+          "citations_valid": true,
+          "top_category": "code_change",
+          "category_correct": true,
+          "hypotheses": 5,
+          "done_reason": "stop"
+        },
+        {
+          "scenario": "disk_full",
+          "think": false,
+          "seed": 2,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 134326,
+          "ttft_ms": 353,
+          "first_content_ms": 353,
+          "input_tokens": 458,
+          "output_tokens": 751,
+          "tokens_per_s": 5.6,
+          "citations_valid": true,
+          "top_category": "infrastructure",
+          "category_correct": false,
+          "hypotheses": 5,
+          "done_reason": "stop"
+        },
+        {
+          "scenario": "config_change",
+          "think": false,
+          "seed": 2,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 164727,
+          "ttft_ms": 268,
+          "first_content_ms": 268,
+          "input_tokens": 407,
+          "output_tokens": 673,
+          "tokens_per_s": 3.5,
+          "citations_valid": true,
+          "top_category": "config_change",
+          "category_correct": true,
+          "hypotheses": 5,
+          "done_reason": "stop"
+        },
+        {
+          "scenario": "bad_deploy",
+          "think": true,
+          "seed": 1,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 165705,
+          "ttft_ms": 1685,
+          "first_content_ms": 95038,
+          "input_tokens": 442,
+          "output_tokens": 882,
+          "tokens_per_s": 5.4,
+          "citations_valid": true,
+          "top_category": "code_change",
+          "category_correct": true,
+          "hypotheses": 3,
+          "done_reason": "stop"
+        },
+        {
+          "scenario": "disk_full",
+          "think": true,
+          "seed": 1,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 207320,
+          "ttft_ms": 943,
+          "first_content_ms": 149633,
+          "input_tokens": 452,
+          "output_tokens": 1542,
+          "tokens_per_s": 7.5,
+          "citations_valid": true,
+          "top_category": "infrastructure",
+          "category_correct": false,
+          "hypotheses": 5,
+          "done_reason": "stop"
+        },
+        {
+          "scenario": "config_change",
+          "think": true,
+          "seed": 1,
+          "first_try_valid": true,
+          "valid": true,
+          "attempts": 1,
+          "error": null,
+          "latency_ms": 139266,
+          "ttft_ms": 346,
+          "first_content_ms": 70084,
+          "input_tokens": 401,
+          "output_tokens": 842,
+          "tokens_per_s": 6.1,
+          "citations_valid": true,
+          "top_category": "config_change",
+          "category_correct": true,
+          "hypotheses": 3,
+          "done_reason": "stop"
+        }
+      ]
+    },
     {
       "model": "qwen3:8b",
       "details": {
@@ -530,16 +771,33 @@
         "free_percent": 61,
         "swap_used_mb": 3670.19
       }
+    },
+    {
+      "date": "2026-11-25T11:02:56+00:00",
+      "chip": "Apple M4",
+      "memory_gb": 24,
+      "macos": "26.6.2",
+      "ollama": "0.40.16",
+      "podman_machine": "true 8GiB 4",
+      "containers_running": 9,
+      "memory": {
+        "free_percent": 61,
+        "swap_used_mb": 3670.19
+      },
+      "memory_end": {
+        "free_percent": 60,
+        "swap_used_mb": 3996.31
+      }
     }
   ],
   "embeddings": {
     "model": "nomic-embed-text:v1.5",
     "dimensions": 768,
-    "cold_load_ms": 257,
+    "cold_load_ms": 523,
     "loaded_size_mb": 320,
     "batch_size": 64,
-    "batch_texts_per_s": 122.7,
-    "single_latency_ms_median": 9.2,
+    "batch_texts_per_s": 95.1,
+    "single_latency_ms_median": 12.5,
     "similarity_paraphrase": 0.601,
     "similarity_unrelated": 0.46
   }
