@@ -300,6 +300,47 @@
 
 **Indexes:** `ix_jobs_claimable` (jobs.queue, priority DESC, jobs.run_after WHERE status = 'queued'); `ix_jobs_queue_status_run_after_priority` (jobs.queue, jobs.status, jobs.run_after, jobs.priority)
 
+## `llm_call_payloads`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `llm_call_id` | UUID | no |  | PK → `llm_calls.id` ON DELETE CASCADE |
+| `request` | JSONB | no |  |  |
+| `response` | TEXT | yes |  |  |
+| `thinking` | TEXT | yes |  |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Indexes:** `ix_llm_call_payloads_created_at` (llm_call_payloads.created_at)
+
+## `llm_calls`
+
+| Column | Type | Null | Default | Key / reference |
+|---|---|---|---|---|
+| `investigation_id` | UUID | yes |  |  |
+| `request_id` | UUID | no |  |  |
+| `attempt` | SMALLINT | no | app: `1` |  |
+| `operation` | TEXT | no | app: `chat` |  |
+| `task` | TEXT | no |  |  |
+| `model` | TEXT | no |  |  |
+| `prompt_version` | TEXT | no | app: `` |  |
+| `prompt_sha256` | TEXT | no |  |  |
+| `thinking` | BOOLEAN | no | app: `False` |  |
+| `num_ctx` | INTEGER | yes |  |  |
+| `input_tokens` | INTEGER | yes |  |  |
+| `output_tokens` | INTEGER | yes |  |  |
+| `latency_ms` | INTEGER | no |  |  |
+| `ttft_ms` | INTEGER | yes |  |  |
+| `load_ms` | INTEGER | yes |  |  |
+| `success` | BOOLEAN | no |  |  |
+| `error_kind` | TEXT | yes |  |  |
+| `error` | TEXT | yes |  |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `id` | UUID | no | app: `uuid7()` | PK |
+
+**Checks:** `attempt >= 1`; `error_kind IS NULL OR error_kind IN ('unavailable', 'timeout', 'http', 'schema', 'empty', 'cancelled')`; `operation IN ('chat','embed')`
+
+**Indexes:** `ix_llm_calls_created_at` (llm_calls.created_at); `ix_llm_calls_investigation_id` (llm_calls.investigation_id WHERE investigation_id IS NOT NULL); `ix_llm_calls_task_created_at` (llm_calls.task, llm_calls.created_at)
+
 ## `poll_watermarks`
 
 | Column | Type | Null | Default | Key / reference |

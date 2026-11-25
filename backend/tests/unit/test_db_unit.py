@@ -45,6 +45,8 @@ def test_all_tables_registered() -> None:
         "integration_signal_status",
         "entities",
         "entity_relations",
+        "llm_calls",
+        "llm_call_payloads",
     }
 
 

@@ -138,6 +138,29 @@ class Settings(BaseSettings):
     jaeger_url: str = "http://127.0.0.1:16686"
     telemetry_timeout_s: float = Field(default=10.0, gt=0, le=60)
     telemetry_max_response_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
+    # LLM gateway (Step 15). Ollama runs natively on the Mac (Metal); a container
+    # reaches it at http://host.containers.internal:11434.
+    ollama_url: str = Field(default="http://127.0.0.1:11434", pattern=r"^https?://")
+    llm_model: str = "qwen3:14b"  # one model for every task (D2), unless overridden
+    llm_embed_model: str = "nomic-embed-text:v1.5"
+    # Per-task overrides, JSON: {"report": "qwen3:8b"} and {"rca": true}.
+    llm_task_models: dict[str, str] = Field(default_factory=dict)
+    llm_task_thinking: dict[str, bool] = Field(default_factory=dict)
+    llm_num_ctx: int = Field(default=16384, ge=2048, le=131072)
+    llm_max_output_tokens: int = Field(default=8192, ge=64)  # thinking included
+    llm_temperature: float = Field(default=0.1, ge=0, le=2)
+    llm_seed: int = 42
+    llm_keep_alive: str = Field(default="30m", pattern=r"^(-1|0|[0-9]+(ms|s|m|h))$")
+    llm_connect_timeout_s: float = Field(default=5.0, gt=0)
+    # No token for this long = stalled (covers loading a model from disk).
+    llm_stall_timeout_s: float = Field(default=180.0, gt=0)
+    llm_timeout_s: float = Field(default=900.0, gt=0)  # one whole request
+    llm_transport_retries: int = Field(default=1, ge=0, le=5)  # unavailable or timed out
+    llm_schema_retries: int = Field(default=2, ge=0, le=5)  # reply did not match the schema
+    # Off by default: prompts carry (redacted) evidence. Kept this many days.
+    llm_store_payloads: bool = False
+    llm_payload_retention_days: int = Field(default=30, ge=1)
+    llm_payload_prune_interval_s: float = Field(default=3600.0, gt=0)
 
     @field_validator("github_webhook_secret", mode="before")
     @classmethod

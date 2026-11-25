@@ -40,6 +40,8 @@ EXPECTED_TABLES = {
     "integration_signal_status",
     "entities",
     "entity_relations",
+    "llm_calls",
+    "llm_call_payloads",
     "alembic_version",
 }
 
