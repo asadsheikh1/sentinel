@@ -123,12 +123,12 @@ Logs, traces, code, and commit messages are **untrusted data**. Mitigations, in 
 
 ## 5. Local model strategy
 
-| Role | Default (to be confirmed by benchmark in Step 15) | Fallback (lower memory / AWS CPU) |
+| Role | Default (decided after the Step 15 benchmark, D2) | Alternatives |
 |---|---|---|
-| Reasoning (RCA, code, report) | **Qwen3 14B** (Q4_K_M, about 9 GB) — Apache-2.0 | Qwen3 8B (about 5 GB) locally. **Qwen3 4B** (about 2.5 GB) on AWS CPU |
+| Reasoning (RCA, code, report) | **Qwen3 8B** (Q4_K_M, 6.5 GB loaded at a 16k context) — Apache-2.0 | Qwen3 14B (10.9 GB) where memory allows; it is compared on quality in Step 26. **Qwen3 4B** (about 4.7 GB) on AWS CPU |
 | Patch generation | Same model (avoids reloading) | Optionally Qwen2.5-Coder 7B or 14B, if evaluation shows a clear gain |
 | Embeddings | **nomic-embed-text v1.5** (768-d, about 0.3 GB) — Apache-2.0 | `bge-m3` (MIT) if multilingual or long input is needed |
 
-The memory budget on the M4 (24 GB): macOS and IDE about 6–8 GB, Ollama with the 14B model plus a 16k KV cache about 11–12 GB, and the Podman VM (`podman machine`: Postgres, Loki, Prometheus, Jaeger, demo app, SENTINEL) about 6 GB. That is tight but feasible. The Podman VM will be capped at 6–8 GB, and the 8B model is the documented fallback.
+The memory budget on the M4 (24 GB), as measured in Step 15 ([benchmark](../benchmarks/models-m4.md)): with the Podman VM (8 GB) running the stack, Qwen3 14B (10.9 GB loaded) pushed about 5.7 GB into swap and generated at about 5 tok/s; Qwen3 8B (6.5 GB) ran at 18.7 tok/s with no swap growth. So the default is 8B (D2), and 14B stays a configuration value for machines with more memory.
 
 Model candidates are compared in Step 15 on **our** evaluation suite, not on public leaderboards. New open-weight releases (for example later Qwen, Mistral, or Gemma versions) can be evaluated by changing a single config value. Licences are checked per model (see [Risks & licences](../4-plan/4-risks-and-licences.md)).

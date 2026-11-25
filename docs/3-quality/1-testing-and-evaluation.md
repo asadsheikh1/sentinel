@@ -87,7 +87,7 @@ Each scenario is run **N = 5 times** per configuration, because local LLMs are n
 Targets are the PRD's provisional targets ([PRD §10](../1-product/1-prd.md#10-success-metrics)). They are goals, not results. They are revised after the first baseline in Step 16 and Step 18, and the reasons for any revision are recorded in `evals/README.md`.
 
 ## 5. Results format and reporting
-- `sentinel eval run --suite core --model qwen3:14b --repeats 5` writes `evals/results/<date>_<gitsha>_<model>/` containing `config.json`, `per_run.jsonl`, `metrics.json`, and `report.md`.
+- `sentinel eval run --suite core --model qwen3:8b --repeats 5` writes `evals/results/<date>_<gitsha>_<model>/` containing `config.json`, `per_run.jsonl`, `metrics.json`, and `report.md`.
 - `sentinel eval compare A B` produces a diff table (for model or prompt changes).
 - The published evaluation page and README badge show only the **latest committed results**, with links.
 - Hardware is recorded: the Apple M4 24 GB with model and quantisation, or the EC2 instance type.

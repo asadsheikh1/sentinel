@@ -141,7 +141,7 @@ class Settings(BaseSettings):
     # LLM gateway (Step 15). Ollama runs natively on the Mac (Metal); a container
     # reaches it at http://host.containers.internal:11434.
     ollama_url: str = Field(default="http://127.0.0.1:11434", pattern=r"^https?://")
-    llm_model: str = "qwen3:14b"  # one model for every task (D2), unless overridden
+    llm_model: str = "qwen3:8b"  # one model for every task (D2), unless overridden
     llm_embed_model: str = "nomic-embed-text:v1.5"
     # Per-task overrides, JSON: {"report": "qwen3:8b"} and {"rca": true}.
     llm_task_models: dict[str, str] = Field(default_factory=dict)

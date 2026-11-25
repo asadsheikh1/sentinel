@@ -54,7 +54,7 @@ Licences reflect the assistant's knowledge as of planning. **They are re-verifie
 |---|---|---|---|---|---|
 | R1 | **Local model RCA quality is too low** (wrong or vague hypotheses) | Medium | High | Strong deterministic evidence and scoring do much of the work. Concise digests. Prompt iteration on a tuning split. Model comparison. Code findings computed deterministically first | Step 18 baseline |
 | R2 | **CPU inference on AWS is too slow** | High | Medium | Small model, asynchronous UX, fewer LLM calls, showcase option B, larger instance as fallback | Step 33 benchmark |
-| R3 | **24 GB memory pressure** (14B model + Podman VM stack + IDE) | Medium | Medium | Native Ollama. `podman machine` memory capped at 8 GB. Container memory limits. 8B fallback. `keep_alive` tuning | Steps 5, 15 |
+| R3 | **24 GB memory pressure** (14B model + Podman VM stack + IDE) | Medium | Medium | Native Ollama. `podman machine` memory capped at 8 GB. Container memory limits. 8B fallback, **now the default (D2): the Step 15 benchmark measured 14B swapping next to the stack**. `keep_alive` tuning | Steps 5, 15 |
 | R4 | Structured output failures or thinking-mode quirks with local models | Medium | Medium | JSON-schema constrained decoding, validation retry, thinking toggle per task, schema-conformance metric | Step 15 |
 | R5 | **Evaluation overfitting:** we author both the faults and the detector | High | High (credibility) | Held-out scenarios, a tuning/held-out split, N=5 repeats, publish failures, invite external scenario contributions | Steps 16, 35 |
 | R6 | Prompt injection through logs or code | Medium | High | Capability containment, validation, human approval, S09 evaluation ([Security](../2-architecture/6-security.md)) | Steps 18, 32 |

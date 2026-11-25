@@ -79,7 +79,7 @@ This run checks whether 14B is slow on its own, or slow because the machine is o
    - with thinking on, it thinks briefly (about 500 tokens) and answers in about 70 s.
 6. **4B thinks far too long.** With thinking on, it produced about 7,000 tokens per answer: about 4 minutes, close to the 8,192-token cap. With thinking off it's the fastest (20 s), but it's the weakest model on paper.
 
-## Recommendation for D2 (needs your approval)
+## D2: decided — Qwen3 8B (approved 2026-11-25)
 
 **Default model: Qwen3 8B, with thinking on for RCA.** The design said "Qwen3 14B, to be confirmed after a speed test in step 15". The test doesn't confirm it on this machine:
 
@@ -98,7 +98,7 @@ Step 26 (the evaluation suite) compares 8B and 14B on quality, which this benchm
 
 **Embeddings: nomic-embed-text v1.5**, as designed (768-d, 320 MB, about 10 ms per text).
 
-Until you decide, the code's default is unchanged (`qwen3:14b`, as in the approved design).
+Approved on 2026-11-25: the default is now `qwen3:8b`.
 
 ## Reproduce
 

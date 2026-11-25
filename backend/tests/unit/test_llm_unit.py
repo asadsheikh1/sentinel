@@ -361,7 +361,7 @@ async def test_structured_reply_is_validated_and_logged(spans: InMemorySpanExpor
     assert call.success
     assert call.attempt == 1
     assert call.task == "rca"
-    assert call.model == "qwen3:14b"
+    assert call.model == "qwen3:8b"
     assert call.thinking is True
     assert call.num_ctx == 16384
     assert call.prompt_version == "rca-v1"
@@ -369,7 +369,7 @@ async def test_structured_reply_is_validated_and_logged(spans: InMemorySpanExpor
     assert call.request_payload is None  # payload storage is off by default
 
     (span,) = spans.get_finished_spans()
-    assert span.name == "chat qwen3:14b"
+    assert span.name == "chat qwen3:8b"
     attrs = dict(span.attributes or {})
     assert attrs["gen_ai.operation.name"] == "chat"
     assert attrs["gen_ai.provider.name"] == "ollama"
@@ -435,18 +435,18 @@ def test_task_configuration() -> None:
     assert gateway.task_config("rca").think is True
     assert gateway.task_config("report").think is False
     assert gateway.task_config("anything_else").think is False
-    assert gateway.task_config("rca").model == "qwen3:14b"
+    assert gateway.task_config("rca").model == "qwen3:8b"
 
     tuned = LLMGateway(
         FakeBackend(),
         settings(
-            llm_model="qwen3:8b",
+            llm_model="qwen3:4b",
             llm_task_models={"patch": "qwen2.5-coder:14b"},
             llm_task_thinking={"rca": False},
         ),
     )
     assert tuned.task_config("rca") == tuned.task_config("report")
-    assert tuned.task_config("rca").model == "qwen3:8b"
+    assert tuned.task_config("rca").model == "qwen3:4b"
     assert tuned.task_config("patch").model == "qwen2.5-coder:14b"
 
 
