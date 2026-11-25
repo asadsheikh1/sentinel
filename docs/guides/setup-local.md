@@ -43,6 +43,18 @@ curl -c /tmp/s.jar -X POST localhost:8000/api/v1/auth/login \
 curl -b /tmp/s.jar localhost:8000/api/v1/auth/me
 ```
 
+### The web UI
+
+```bash
+make stack-up                  # the API, the telemetry stores and the gateway
+make ui                        # builds the UI and serves it, with the API, on one origin
+open http://127.0.0.1:3000     # sign in with the admin account
+```
+
+For UI work with hot reload instead: `cd frontend && npm run dev` (http://127.0.0.1:5173,
+proxying `/api` to the API on :8000). After a change to the API, run `make api-client` to
+regenerate the frontend's typed client. See the [web UI guide](web-ui.md).
+
 For anything other than GET, also send the CSRF token: `-H "X-CSRF-Token: <value of the sentinel_csrf cookie>"`. Interactive API docs are at http://localhost:8000/api/v1/docs.
 
 ## 5. Database

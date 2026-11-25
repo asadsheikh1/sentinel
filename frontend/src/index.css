@@ -1,70 +1,44 @@
-:root {
-  --bg: #f7f8fa;
-  --fg: #16181d;
-  --muted: #5b616e;
-  --card: #ffffff;
-  --border: #dfe2e8;
-  --ok: #17803d;
-  --error: #b42318;
-  color-scheme: light dark;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    sans-serif;
+@import 'tailwindcss';
+
+/* Colour tokens: light by default, dark when the system asks for it. */
+@theme {
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-subtle: #f0f2f5;
+  --color-line: #dfe3e8;
+  --color-ink: #16191d;
+  --color-muted: #5f6873;
+  --color-accent: #2f5bd3;
+  --color-accent-fg: #ffffff;
+  --color-sev1: #b42318;
+  --color-sev2: #c4520f;
+  --color-sev3: #a16207;
+  --color-sev4: #4b5563;
+  --color-good: #15803d;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1115;
-    --fg: #e8eaee;
-    --muted: #9aa1ad;
-    --card: #171a20;
-    --border: #2a2f38;
-    --ok: #4ade80;
-    --error: #f87171;
+    --color-canvas: #0f1216;
+    --color-surface: #161a20;
+    --color-subtle: #1e232b;
+    --color-line: #2a3039;
+    --color-ink: #e7eaee;
+    --color-muted: #98a2ae;
+    --color-accent: #6f93f2;
+    --color-accent-fg: #0b0f17;
+    --color-sev1: #f97066;
+    --color-sev2: #f79009;
+    --color-sev3: #eab308;
+    --color-sev4: #9ca3af;
+    --color-good: #4ade80;
   }
 }
 
 body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-}
-
-.shell {
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 3rem 1rem;
-}
-
-h1 {
-  margin: 0;
-  letter-spacing: 0.08em;
-}
-
-.tagline {
-  color: var(--muted);
-  margin-top: 0.25rem;
-}
-
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 1rem 1.25rem;
-  margin-top: 2rem;
-}
-
-.card h2 {
-  font-size: 1rem;
-  margin: 0 0 0.5rem;
-}
-
-.ok {
-  color: var(--ok);
-}
-
-.error {
-  color: var(--error);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }
