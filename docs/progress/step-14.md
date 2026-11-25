@@ -1,6 +1,6 @@
 # Step 14 report — Integrations UI: catalogue, setup wizard, verification, health, inventory
 
-**Status:** ✅ built and tested; all 12 CI checks green. Your dry run (below) is the remaining acceptance.
+**Status:** 🟡 re-running CI after the DNS-retry fixes (bugs 6 and 7). Your dry run (below) is the remaining acceptance.
 **PR:** [PR #14](https://github.com/asadsheikh1/sentinel/pull/14).
 **Date:** 2026-11-25
 
@@ -42,6 +42,11 @@
 3. **The "needs attention" list could run to dozens of rows** (this dev stack has 26 stale integrations left by earlier agent tests). It shows 5, then a count.
 4. **`SENTINEL_AGENT_PUBLIC_ENDPOINT` never reached the API container**, so the wizard always showed `http://127.0.0.1:4319`, which a separate VM can't use. Found while writing the dry-run steps; compose now passes it through.
 5. **The checklist's times were raw ISO timestamps** ("last at 2026-11-25T07:59:10.336098+00:00"). The API returns the time as its own field, and the UI shows "last 2 seconds ago", with the exact time on hover.
+
+6. **A DNS hiccup broke installs** (CI, after the first green run). Podman's DNS timed out looking up `api` (`lookup api: i/o timeout`, about 5 s). The ingest Caddy's 5 s retry window left no room for a second try, so `GET /agent/install.sh` returned 502: in the browser test, and in the agent job's own install. Fixes:
+   - Caddy retries connections to the API for up to 15 s (both Caddyfiles);
+   - the install command users copy, and the installer's own requests to SENTINEL, retry transient errors with `curl --retry 5` (5xx and timeouts, never a 401).
+7. **A Step 9 test flaked on `main` after PR #13.** A probe target restarted, and Podman's DNS was slow to know it again, so "up" took more than the test's 40 s. Detection (the criterion: down within 2 intervals) passed. Recovery now gets 6 intervals, and the check's last error is printed if it ever fails.
 
 ## Decisions worth reviewing
 

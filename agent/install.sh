@@ -2,7 +2,7 @@
 # SENTINEL Agent installer: a pinned OpenTelemetry Collector (contrib) that sends
 # this machine's metrics and logs (and its containers') to SENTINEL.
 #
-#   curl -fsSL <endpoint>/agent/install.sh -o sentinel-agent-install.sh
+#   curl -fsSL --retry 5 <endpoint>/agent/install.sh -o sentinel-agent-install.sh
 #   sudo bash sentinel-agent-install.sh --endpoint <endpoint> --integration <id>
 #
 # The ingest token is read from a prompt, from --token-file, or from the
@@ -174,7 +174,7 @@ printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" > "$WORK/auth.curlrc"
 # Fetching the config proves the endpoint, the integration and the token before
 # anything is installed.
 log "Downloading the agent config for integration $INTEGRATION"
-status="$(curl -sS -o "$WORK/config.yaml" -D "$WORK/headers" -w '%{http_code}' \
+status="$(curl -sS --retry 5 -o "$WORK/config.yaml" -D "$WORK/headers" -w '%{http_code}' \
   --proto '=https,http' --max-time 30 -K "$WORK/auth.curlrc" \
   "$ENDPOINT/api/v1/integrations/$INTEGRATION/agent-config?mode=$MODE")" \
   || die "cannot reach $ENDPOINT"
@@ -292,7 +292,7 @@ state_set config_hash "$CONFIG_HASH"
 
 # ---------------------------------------------------------------- socket proxy
 if [[ "$CONTAINERS" == 1 ]]; then
-  curl -fsS --proto '=https,http' --max-time 30 -o "$WORK/socket-proxy.cfg" "$ENDPOINT/agent/socket-proxy.cfg" \
+  curl -fsS --retry 5 --proto '=https,http' --max-time 30 -o "$WORK/socket-proxy.cfg" "$ENDPOINT/agent/socket-proxy.cfg" \
     || die "cannot download the socket proxy config"
   grep -q 'deny_status 403 unless METH_GET' "$WORK/socket-proxy.cfg" || die "unexpected socket proxy config"
   install -m 0644 -o root -g root "$WORK/socket-proxy.cfg" "$ETC/socket-proxy.cfg"
@@ -423,7 +423,7 @@ start_container() {
   state_set engine "$engine"
 
   log "Building the agent image with $engine (pinned base images)"
-  curl -fsS --proto '=https,http' --max-time 30 -o "$WORK/Containerfile" "$ENDPOINT/agent/Containerfile" \
+  curl -fsS --retry 5 --proto '=https,http' --max-time 30 -o "$WORK/Containerfile" "$ENDPOINT/agent/Containerfile" \
     || die "cannot download the agent Containerfile"
   # Remember which base images this installer pulls, so uninstall removes only those.
   local ref pulled
