@@ -1,7 +1,7 @@
 # Step 14 report — Integrations UI: catalogue, setup wizard, verification, health, inventory
 
-**Status:** 🟡 built and tested locally; CI results pending.
-**PR:** (link added after opening).
+**Status:** ✅ built and tested; all 12 CI checks green. Your dry run (below) is the remaining acceptance.
+**PR:** [PR #14](https://github.com/asadsheikh1/sentinel/pull/14).
 **Date:** 2026-11-25
 
 ## What was built
@@ -22,7 +22,7 @@
 
 | Criterion | Result |
 |---|---|
-| Testing: E2E: create a Linux-host integration → the (containerised) agent installs → checklist ticks → host visible in inventory | ✅ Locally, Playwright against the real stack:<br>1. An admin creates a Linux-host integration in the wizard.<br>2. The test copies **the token and the install command off the page**.<br>3. On a fresh Ubuntu 24.04 systemd machine, it does exactly what the page says: saves the token to a file, then runs the installer, pointed at that machine's way in to SENTINEL.<br>4. Every required item on the same page ticks, with no reload: token used, metrics, logs, the installer's marker through the log pipeline, and the machine in the inventory. The optional "current configuration" item ticks too.<br>5. The machine is then found in the Inventory page.<br>About 30 s once the machine image is cached. ![The checklist after a real install](img/step-14-onboarding-checklist.png) ⏳ CI (the installer downloads the agent there, as for a user) |
+| Testing: E2E: create a Linux-host integration → the (containerised) agent installs → checklist ticks → host visible in inventory | ✅ Locally, Playwright against the real stack:<br>1. An admin creates a Linux-host integration in the wizard.<br>2. The test copies **the token and the install command off the page**.<br>3. On a fresh Ubuntu 24.04 systemd machine, it does exactly what the page says: saves the token to a file, then runs the installer, pointed at that machine's way in to SENTINEL.<br>4. Every required item on the same page ticks, with no reload: token used, metrics, logs, the installer's marker through the log pipeline, and the machine in the inventory. The optional "current configuration" item ticks too.<br>5. The machine is then found in the Inventory page.<br>About 30 s once the machine image is cached. ![The checklist after a real install](img/step-14-onboarding-checklist.png) ✅ In CI too: on Ubuntu 24.04, with the installer downloading the agent as for a user, it passed in 23 s |
 | A new user can onboard a Linux VM and an HTTP check using only the UI instructions (**dry run with you as the tester**) | Automated proxy ✅. The test above (Linux host), plus "an HTTP check, set up from the UI, shows its first probe": it ticks "The first probe ran" with the result `up`. **Your dry run is still to do** (see "How you verify"). It's a person following the page, which no test can stand in for, and it's the real acceptance |
 
 ## Test results
@@ -33,7 +33,7 @@
 | Component tests (Vitest) | 23 passed (14 from Step 13, 9 new) |
 | Playwright (real stack, local Chrome) | 5 passed: 3 incident tests, plus HTTP-check and Linux-host onboarding |
 | `make test-all` (backend) | 707 passed, coverage 93.8% |
-| CI | pending |
+| CI (PR #14) | all 12 checks green; `ci-e2e` ran all 5 browser tests, including the Linux-host onboarding |
 
 ## Bugs found and fixed during this step
 
