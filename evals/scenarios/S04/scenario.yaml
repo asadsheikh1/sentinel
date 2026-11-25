@@ -1,0 +1,42 @@
+# S04: Celery task fails after a payload-schema change
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S04
+title: Celery task fails after a payload-schema change
+kind: positive
+inject:
+- step: deploy
+  ref: scenario/S04-bad
+recover:
+- step: deploy
+  ref: scenario/S04-fix
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: worker
+  - type: service
+    name: orders
+  signals:
+  - error_group_new
+ground_truth:
+  category: code_change
+  services:
+  - worker
+  - orders
+  culprit:
+    ref: scenario/S04-bad
+    file: src/aviro/orders/app.py
+    function: create_order
+  keywords:
+  - fulfil_order
+  - TypeError
+  - kwargs
+  - order
+  - worker
+  canonical: The orders deploy sends the fulfilment task an 'order' argument the worker's fulfil_order
+    doesn't accept, so every task fails with TypeError and orders stay paid.
+  evidence_kinds:
+  - deployment
+  - error_group
+  - log_excerpt
+  repairable: true

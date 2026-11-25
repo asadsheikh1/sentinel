@@ -1,0 +1,36 @@
+# S16: The AVIRO host goes away: agent silent and the probe failing
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S16
+title: 'The AVIRO host goes away: agent silent and the probe failing'
+kind: positive
+inject:
+- step: host
+  action: pause
+recover:
+- step: host
+  action: unpause
+detection:
+  expect_incident: true
+  deadline_s: 480
+  observe_s: 540
+  entities:
+  - type: host
+    name: aviro-host
+  gap:
+    classification: host_or_network_down
+    severity: critical
+  signals:
+  - telemetry_gap
+  - EndpointDown
+ground_truth:
+  category: infrastructure
+  services: []
+  keywords:
+  - host
+  - down
+  - unreachable
+  - aviro-host
+  canonical: 'The AVIRO host is unreachable: its agent is silent and the HTTP check fails, so the host
+    (or its network) is down.'
+notes: A telemetry gap needs the integration to go stale first (about 5 minutes), so the deadline here
+  is 8 minutes.

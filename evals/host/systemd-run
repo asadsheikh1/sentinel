@@ -1,0 +1,11 @@
+#!/bin/sh
+# Netavark starts aardvark-dns (container DNS) with `systemd-run --user` when it
+# runs in a user namespace, as it does here: this machine is a rootless container.
+# There is no user bus in the machine, so DNS never starts. Run it in a system
+# scope instead; everything else passes through unchanged.
+for arg do
+  shift
+  [ "$arg" = "--user" ] && continue
+  set -- "$@" "$arg"
+done
+exec /usr/bin/systemd-run "$@"

@@ -1,0 +1,43 @@
+# S01: Deploy introduces a KeyError on a missing field in orders
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S01
+title: Deploy introduces a KeyError on a missing field in orders
+kind: positive
+inject:
+- step: deploy
+  ref: scenario/S01-bad
+recover:
+- step: deploy
+  ref: scenario/S01-fix
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: orders
+  - type: service
+    name: gateway
+  signals:
+  - ServiceHighErrorRatio
+  - error_group_new
+ground_truth:
+  category: code_change
+  services:
+  - orders
+  - gateway
+  culprit:
+    ref: scenario/S01-bad
+    file: src/aviro/orders/app.py
+    function: create_order
+  keywords:
+  - gift_message
+  - KeyError
+  - create_order
+  - deploy
+  canonical: The orders deploy (gift messages on checkout) reads body['gift_message'], which normal clients
+    don't send, so every checkout fails with KeyError and returns 500.
+  evidence_kinds:
+  - deployment
+  - error_group
+  - metric_comparison
+  repairable: true
+  repair_test: tests/unit/test_routing.py

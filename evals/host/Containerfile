@@ -1,0 +1,24 @@
+# The AVIRO host for the evaluation suite: a disposable Ubuntu 24.04 machine with
+# systemd, its own container engine (AVIRO runs inside it) and an edge proxy.
+# Its /var/lib/containers is a separate ext4 filesystem (made by aviro-host.sh in
+# the Podman VM), so S13 can fill AVIRO's disk without touching SENTINEL's.
+# The SENTINEL Agent is NOT baked in: each suite run installs it with the real
+# installer, the way a user does.
+#
+#   podman build -t localhost/sentinel-aviro-host:24.04 -f evals/host/Containerfile evals/host
+ARG BASE=localhost/sentinel-test-ubuntu:24.04
+FROM ${BASE}
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      podman podman-compose git curl ca-certificates socat e2fsprogs util-linux \
+      iptables fuse-overlayfs netavark aardvark-dns; \
+    rm -rf /var/lib/apt/lists/*; \
+    podman --version; podman-compose --version; test -x /usr/lib/podman/netavark
+# Rootful Podman inside a container: cgroups are managed by the outer engine.
+RUN printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' \
+      > /etc/containers/containers.conf
+COPY aviro-edge.service /etc/systemd/system/
+# Container DNS inside a rootless container: see the comment in systemd-run.
+COPY --chmod=755 systemd-run /usr/local/bin/systemd-run
+RUN systemctl enable aviro-edge.service podman.socket

@@ -1,0 +1,28 @@
+# S15: The agent is stopped; the host is healthy and its probe passes
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S15
+title: The agent is stopped; the host is healthy and its probe passes
+kind: positive
+inject:
+- step: agent
+  action: stop
+recover:
+- step: agent
+  action: start
+detection:
+  expect_incident: false
+  deadline_s: 480
+  observe_s: 540
+  gap:
+    classification: agent_problem
+    severity: info
+  no_service_incident: true
+ground_truth:
+  category: monitoring_gap
+  services: []
+  keywords:
+  - agent
+  - stopped
+  - telemetry gap
+  canonical: The SENTINEL Agent on the AVIRO host stopped; the host and AVIRO are fine (the HTTP check
+    passes), so this is a monitoring gap, not an outage.

@@ -1,0 +1,48 @@
+# S13: The AVIRO host's disk fills up, so writes fail and orders return 5xx
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S13
+title: The AVIRO host's disk fills up, so writes fail and orders return 5xx
+kind: positive
+inject:
+- step: disk_fill
+  action: fill
+recover:
+- step: disk_fill
+  action: remove
+detection:
+  expect_incident: true
+  entities:
+  - type: host
+    name: aviro-host
+  - type: service
+    name: orders
+  - type: service
+    name: inventory
+  - type: service
+    name: payments
+  - type: service
+    name: gateway
+  origin:
+    type: host
+    name: aviro-host
+  signals:
+  - HostFilesystemFull
+  - ServiceHighErrorRatio
+ground_truth:
+  category: resource_exhaustion
+  services:
+  - orders
+  - inventory
+  - payments
+  keywords:
+  - disk
+  - full
+  - No space left
+  - filesystem
+  - aviro-host
+  canonical: The AVIRO host's data disk is full, so Postgres can't write and checkouts fail; the origin
+    is the host, not a service.
+  evidence_kinds:
+  - metric_series
+  - error_group
+  - log_excerpt

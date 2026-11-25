@@ -1,0 +1,52 @@
+# S14: A CPU hog on the AVIRO host slows every service
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S14
+title: A CPU hog on the AVIRO host slows every service
+kind: positive
+inject:
+- step: cpu_hog
+  action: start
+  threads: 4
+recover:
+- step: cpu_hog
+  action: stop
+detection:
+  expect_incident: true
+  observe_s: 1200
+  entities:
+  - type: host
+    name: aviro-host
+  - type: service
+    name: orders
+  - type: service
+    name: inventory
+  - type: service
+    name: payments
+  - type: service
+    name: gateway
+  origin:
+    type: host
+    name: aviro-host
+  signals:
+  - HostHighCpu
+  - ServiceLatencyHigh
+ground_truth:
+  category: resource_exhaustion
+  services:
+  - orders
+  - inventory
+  - payments
+  - gateway
+  keywords:
+  - CPU
+  - host
+  - aviro-host
+  - saturated
+  canonical: A process on the AVIRO host keeps every CPU busy, so all services slow down; the origin is
+    the host.
+  evidence_kinds:
+  - metric_series
+  - metric_comparison
+notes: HostHighCpu needs a 5-minute average above 90% held for 10 minutes, so it can't fire within the
+  5-minute deadline; the run is watched for 20 minutes to record when it does. In this local setup the
+  Podman VM's CPUs are shared with SENTINEL itself.

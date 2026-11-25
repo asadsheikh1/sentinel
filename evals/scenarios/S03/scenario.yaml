@@ -1,0 +1,49 @@
+# S03: Config change shrinks the database pool; pool exhaustion under load
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S03
+title: Config change shrinks the database pool; pool exhaustion under load
+kind: positive
+load_users: 20
+inject:
+- step: deploy
+  ref: scenario/S03-bad
+recover:
+- step: deploy
+  ref: scenario/S03-fix
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: inventory
+  - type: service
+    name: orders
+  - type: service
+    name: payments
+  - type: service
+    name: gateway
+  signals:
+  - ServiceHighErrorRatio
+  - error_group_new
+ground_truth:
+  category: config_change
+  services:
+  - inventory
+  - orders
+  - payments
+  culprit:
+    ref: scenario/S03-bad
+    file: src/aviro/common/config.py
+    function: Settings
+  keywords:
+  - pool
+  - db_pool_max
+  - timeout
+  - PoolTimeout
+  - config
+  canonical: A config change set the database pool to one connection with a 50 ms acquire timeout, so
+    concurrent requests fail waiting for a connection.
+  evidence_kinds:
+  - deployment
+  - error_group
+  - metric_comparison
+  repairable: true
