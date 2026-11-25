@@ -1,6 +1,6 @@
 # Step 15 report: LLM gateway, call logging and the model benchmark
 
-**Status:** ✅ built and tested; the benchmark has been measured. **D2 needs your decision** (see below).
+**Status:** ✅ built and tested; the benchmark has been measured; all 10 CI checks green (one agent job needed a re-run, see "Known limitations"). **D2 needs your decision** (see below).
 **PR:** [PR #15](https://github.com/asadsheikh1/sentinel/pull/15).
 **Date:** 2026-11-25
 
@@ -75,6 +75,10 @@ If you approve, I'll change the default and update D2 in `docs/README.md` and AI
 
 ## Known limitations
 
+- **An intermittent agent test failure I haven't explained.** On the fix commit, `test_disk_filling_up_raises_a_host_signal` (Ubuntu VM job) failed once, and passed when the job was re-run.
+  - The `error_group_new` signal was created, but the test's query for it (by service) returned nothing for 120 s.
+  - One error-poller pass had failed with a `DBAPIError` just before.
+  - That's Step 11/12 detection code, which this step doesn't change. Its cause isn't known yet. I'd like to look at it as a separate fix rather than guess here.
 - **Nothing calls the gateway in production yet.** The investigator (Step 17) is the first caller. `/readyz` doesn't check Ollama: CI has none, and design says a missing Ollama degrades investigations, not the API.
 - **The benchmark's quality check is three cases.** Model quality is decided by the evaluation suite (Step 26).
 - **Only Qwen3 4B, 8B and 14B were benchmarked.** Qwen2.5-Coder (optional, for patches) and bge-m3 (an embedding fallback) weren't; the design only needs them if the evaluation shows a gain.
