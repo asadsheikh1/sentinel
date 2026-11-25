@@ -1,6 +1,6 @@
 # Step 14 report — Integrations UI: catalogue, setup wizard, verification, health, inventory
 
-**Status:** 🟡 re-running CI after the DNS-retry fixes (bugs 6 and 7). Your dry run (below) is the remaining acceptance.
+**Status:** ✅ built and tested; all 12 CI checks green (after the DNS-retry fixes, bugs 6 and 7). Your dry run (below) is the remaining acceptance.
 **PR:** [PR #14](https://github.com/asadsheikh1/sentinel/pull/14).
 **Date:** 2026-11-25
 
