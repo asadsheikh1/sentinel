@@ -1,7 +1,7 @@
 # Step 13 report — Frontend foundation: login, incidents, timeline
 
-**Status:** 🟡 built and tested locally; CI results pending.
-**PR:** (link added after opening).
+**Status:** ✅ built and tested; all 12 CI checks green.
+**PR:** [PR #13](https://github.com/asadsheikh1/sentinel/pull/13).
 **Date:** 2026-11-25
 
 ## What was built
@@ -23,7 +23,7 @@
 | Criterion | Result |
 |---|---|
 | A viewer can't change status | ✅ **In the UI:** a viewer gets no status, severity or comment control, only "Your role can view incidents but not change them" (component test and Playwright). **In the API:** in the browser test, the viewer's own session and CSRF token sending `PATCH {status: resolved}` gets **403**, and the incident stays open |
-| The E2E test passes | ✅ Locally, 3 of 3 Playwright tests against the real stack. Real accounts: an admin from the CLI, a viewer and a responder through invites. Real incidents: alerts posted to Alertmanager, through the webhook, signal and correlator. The tests cover:<br>• the viewer signs in, **watches a new incident appear in the list without reloading**, opens it, and can't change it;<br>• the responder moves it to Investigating with a note and comments, and the timeline records both;<br>• a stored-XSS payload in an alert renders inert under the real CSP: no `<img>` or `<script>` created, no script run, no dialog.<br>⏳ CI (`ci-e2e`) |
+| The E2E test passes | ✅ Locally, 3 of 3 Playwright tests against the real stack. Real accounts: an admin from the CLI, a viewer and a responder through invites. Real incidents: alerts posted to Alertmanager, through the webhook, signal and correlator. The tests cover:<br>• the viewer signs in, **watches a new incident appear in the list without reloading**, opens it, and can't change it;<br>• the responder moves it to Investigating with a note and comments, and the timeline records both;<br>• a stored-XSS payload in an alert renders inert under the real CSP: no `<img>` or `<script>` created, no script run, no dialog.<br>✅ In CI (`ci-e2e`, Chromium on Ubuntu 24.04): passed |
 | How you verify: log in, trigger S01, watch the incident appear | ✅ Real AVIRO under load from 20 synthetic shoppers, `make deploy REF=scenario/S01-bad`: INC-67 opened **24 s** after the deployment's rollout-start stamp, at SEV1, with three signals:<br>• the `KeyError` error spike;<br>• `orders` 100% failing;<br>• the gateway's 11% 5xx, joined through the topology.<br>Both entities, the S01-bad deployment and the full timeline are on the page: ![S01 incident in the UI](img/step-13-s01-incident.png) |
 
 Its title is its first signal's: here the error spike, which in the fast test stack arrived before the 5xx alert.
@@ -36,7 +36,7 @@ Its title is its first signal's: here the error spike, which in the fast test st
 | Frontend component tests (Vitest) | 14 passed |
 | Playwright (local Chrome, fast stack, real UI on :3000) | 3 passed |
 | `make test-all` (backend) | 703 passed, coverage 93.7% |
-| CI | pending |
+| CI (PR #13) | all 12 checks green, including the new `ci-e2e` browser job and the frontend job's generated-types check |
 
 **Checking that the tests can actually fail.** I broke four things, and a test failed each time:
 - the controls shown to every role;
