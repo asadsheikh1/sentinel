@@ -3,12 +3,13 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Literal
 
 import structlog
 from fastapi import Depends, FastAPI, Response, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from sentinel import __version__
 from sentinel.api import errors
@@ -19,6 +20,7 @@ from sentinel.api.routers import (
     auth,
     checks,
     error_groups,
+    incidents,
     ingest,
     ingest_auth,
     integrations,
@@ -30,9 +32,11 @@ from sentinel.auth.ratelimit import RateLimiter
 from sentinel.checks.prober_identity import ensure_prober
 from sentinel.checks.state import probe_state_pass
 from sentinel.config import Settings, get_settings
-from sentinel.db.engine import create_engine, create_session_factory, ping
+from sentinel.db.engine import create_engine, create_session_factory, ping, session_scope
+from sentinel.detection.correlator import correlation_pass
 from sentinel.detection.gaps import gap_pass
 from sentinel.detection.poller import poll_pass
+from sentinel.detection.signals import AlertReconciler, alertmanager_active
 from sentinel.ingestion.alertmanager_key import ensure_alertmanager_key
 from sentinel.integrations import jobs
 from sentinel.integrations.entities import prometheus_query
@@ -50,6 +54,13 @@ class HealthResponse(BaseModel):
 class ReadyResponse(BaseModel):
     status: Literal["ready", "not_ready"]
     database: Literal["ok", "unavailable"]
+
+
+async def _reconcile(
+    session_factory: async_sessionmaker[AsyncSession], reconciler: AlertReconciler
+) -> None:
+    async with session_scope(session_factory) as db:
+        await reconciler.run(db, now=datetime.now(UTC))
 
 
 def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None = None) -> FastAPI:
@@ -109,6 +120,25 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
                         "error_groups",
                         settings.error_poll_interval_s,
                         lambda: poll_pass(app.state.session_factory, settings),
+                    )
+                )
+            )
+            tasks.append(
+                asyncio.create_task(
+                    jobs.forever(
+                        "correlation",
+                        settings.correlation_interval_s,
+                        lambda: correlation_pass(app.state.session_factory, settings),
+                    )
+                )
+            )
+            reconciler = AlertReconciler(alertmanager_active(settings.alertmanager_url))
+            tasks.append(
+                asyncio.create_task(
+                    jobs.forever(
+                        "alert_reconcile",
+                        settings.alert_reconcile_interval_s,
+                        lambda: _reconcile(app.state.session_factory, reconciler),
                     )
                 )
             )
@@ -177,5 +207,6 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
     app.include_router(ingest.signals_router)
     app.include_router(ingest.deployments_router)
     app.include_router(error_groups.router)
+    app.include_router(incidents.router)
 
     return app

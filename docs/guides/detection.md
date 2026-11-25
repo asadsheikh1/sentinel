@@ -58,8 +58,10 @@ fires, and the packs' tests include cases that must stay quiet:
 | `error_group_new` | A log error SENTINEL hasn't seen before in that service (or host unit). Resolves after 10 quiet minutes |
 | `error_group_spike` | A known error at 5× its usual rate (below) |
 
-Signals are linked to the inventory entity they're about. The lookup checks, in
-order: the health check, then the container, the service, and the host.
+Signals are linked to the inventory entity they're about. An alert's
+`entity_type` label decides first: a host alert belongs to the host, even
+though host metrics carry the reporting agent's `job`. Otherwise the lookup
+checks, in order: the health check, the container, the service, then the host.
 
 ### Telemetry gaps: agent problem, or host down?
 
@@ -113,6 +115,11 @@ an app that logs INFO to stderr isn't flagged.
 A plain ERROR line without a stack trace uses where it was logged instead of a
 frame.
 
+**Not grouped:** the OpenTelemetry SDK's own messages (loggers `opentelemetry.*`),
+such as "Failed to export logs batch due to timeout". They arrive as the app's
+errors, but they're about telemetry delivery, which a telemetry gap already
+covers.
+
 **Groups belong to a scope:**
 - **A service:** `service:{namespace}/{name}@{environment}`.
 - **Without a service:** the host's container, systemd unit or syslog
@@ -123,7 +130,7 @@ both of these hold for the last 5 minutes:
 - at least 20 occurrences;
 - at least 5 times its average 5 minutes over the hour before.
 
-It resolves when that stops. The thresholds are settings
+It resolves once the rate falls below half of both thresholds (so a rate hovering at 5× doesn't flap). The thresholds are settings
 (`SENTINEL_ERROR_SPIKE_*`).
 
 **Reliability:** Loki is read up to 20 s behind real time, so lines that arrive
@@ -178,6 +185,24 @@ invalid one is replaced.
 
 Grouping is per alert and entity, with `group_wait` set to 10 s, so a new
 alert reaches SENTINEL quickly.
+
+**Kept in step with Alertmanager.** The webhook is the fast path, but it can
+miss things. Every 60 s, SENTINEL reads Alertmanager's active alerts (a
+read-only API) and reconciles both ways. Both cases below were seen live in
+Step 12:
+- **A resolved alert it never heard about.** Alertmanager keeps active alerts
+  only in memory. Restarted while an alert fired, it forgets the alert and
+  never sends "resolved". A firing signal whose alert is missing from
+  Alertmanager on two checks in a row is resolved, with the reason
+  "no longer active in Alertmanager".
+- **A firing alert that was never sent.** Alertmanager's notification log
+  survives a restart. It can take a new episode of an alert it notified before
+  as a repeat, and hold it back for the 1-hour repeat interval. An alert that
+  has been active for 2 minutes with no firing signal is taken in through the
+  same idempotent path as the webhook. Not sooner: that would race the webhook,
+  and an alert that resolves within `group_wait` is never notified at all.
+
+If Alertmanager can't be reached, nothing changes.
 
 ## How fast
 

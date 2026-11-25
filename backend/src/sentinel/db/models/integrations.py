@@ -185,7 +185,7 @@ class EntityRelation(Base):
             "relation IN ('runs_on','uses','fronts','built_from','member_of')",
             name="relation_valid",
         ),
-        CheckConstraint("source IN ('inferred','manual')", name="source_valid"),
+        CheckConstraint("source IN ('inferred','manual','traces')", name="source_valid"),
         CheckConstraint("confidence BETWEEN 0 AND 1", name="confidence_range"),
     )
 

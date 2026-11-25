@@ -30,6 +30,7 @@ groups:
         labels: { severity: critical, pack: service, entity_type: service }
         annotations:
           summary: "{{ $labels.service_name }}: {{ $value | humanizePercentage }} of requests fail"
+          value: "{{ $value }}" # the error ratio (0-1), read by the severity rules
 
       # Both above a static floor and twice the usual p95: a slow service, not a busy one.
       - alert: ServiceLatencyHigh

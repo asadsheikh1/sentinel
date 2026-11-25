@@ -6,7 +6,14 @@ from collections.abc import Awaitable, Callable
 import structlog
 
 from sentinel.db.engine import session_scope
-from sentinel.integrations.entities import Query, discover, prometheus_query
+from sentinel.integrations.entities import (
+    DependencyFetch,
+    Query,
+    discover,
+    prometheus_query,
+    service_graph,
+    store_dependencies,
+)
 from sentinel.integrations.gate import IngestGate
 
 log = structlog.get_logger("sentinel.integrations")
@@ -33,9 +40,17 @@ async def discovery_pass(gate: IngestGate, query: Query) -> None:
         _, gate.series_counts = await discover(db, query)
 
 
+async def dependency_pass(gate: IngestGate, fetch: DependencyFetch) -> None:
+    """Service ``uses`` relations from the gateway's service graph (I12)."""
+    edges = await fetch()
+    async with session_scope(gate.session_factory) as db:
+        await store_dependencies(db, edges)
+
+
 def start(gate: IngestGate) -> list[asyncio.Task[None]]:
     settings = gate.settings
     query = prometheus_query(settings.prometheus_url)
+    dependencies = service_graph(query)
     return [
         asyncio.create_task(
             forever(
@@ -49,6 +64,13 @@ def start(gate: IngestGate) -> list[asyncio.Task[None]]:
                 "entity_discovery",
                 settings.entity_discovery_interval_s,
                 lambda: discovery_pass(gate, query),
+            )
+        ),
+        asyncio.create_task(
+            forever(
+                "service_dependencies",
+                settings.dependency_discovery_interval_s,
+                lambda: dependency_pass(gate, dependencies),
             )
         ),
     ]

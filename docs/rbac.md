@@ -51,6 +51,11 @@ Machine keys (`X-Sentinel-Key`) carry scopes, never user permissions.
 | GET | `/api/v1/error-groups` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/error-groups/{group_id}` | `incidents:read` | viewer, responder, approver, admin |
 | GET | `/api/v1/events` | `incidents:read` | viewer, responder, approver, admin |
+| GET | `/api/v1/incidents` | `incidents:read` | viewer, responder, approver, admin |
+| GET | `/api/v1/incidents/{incident_id}` | `incidents:read` | viewer, responder, approver, admin |
+| PATCH | `/api/v1/incidents/{incident_id}` | `incidents:write` | responder, approver, admin |
+| POST | `/api/v1/incidents/{incident_id}/comments` | `incidents:write` | responder, approver, admin |
+| GET | `/api/v1/incidents/{incident_id}/timeline` | `incidents:read` | viewer, responder, approver, admin |
 | POST | `/api/v1/ingest/alertmanager` | API key scope `alerts:write` | API keys only |
 | POST | `/api/v1/ingest/deployments` | API key scope `deployments:write` | API keys only |
 | POST | `/api/v1/ingest/github` | HMAC signature (GitHub webhook secret) | GitHub (signed webhook) |

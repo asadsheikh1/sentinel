@@ -7,17 +7,22 @@ again later is a new signal.
 """
 
 import uuid
-from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+import httpx
+import structlog
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sentinel.db.models import Integration, Signal, SignalKind, SignalStatus
 from sentinel.integrations.entities import resolve_entity
 from sentinel.security.redaction import clean_value
+
+log = structlog.get_logger("sentinel.detection")
 
 SEVERITIES = ("critical", "warning", "info")
 # Alertmanager sends this for "not resolved yet".
@@ -154,3 +159,126 @@ def as_dict(signal: Signal) -> dict[str, Any]:
         "ends_at": signal.ends_at,
         "received_at": signal.received_at,
     }
+
+
+# ------------------------------------------------------------------ reconciliation
+
+ActiveFetch = Callable[[], Awaitable[list[dict[str, Any]]]]
+
+
+def alertmanager_active(base_url: str, timeout_s: float = 10.0) -> ActiveFetch:
+    """The alerts Alertmanager holds as active (its read-only v2 API)."""
+
+    async def fetch() -> list[dict[str, Any]]:
+        async with httpx.AsyncClient(base_url=base_url, timeout=timeout_s) as client:
+            response = await client.get(
+                "/api/v2/alerts", params={"active": "true", "silenced": "true", "inhibited": "true"}
+            )
+            response.raise_for_status()
+            body = response.json()
+        return [a for a in body if isinstance(a, dict) and a.get("fingerprint")]
+
+    return fetch
+
+
+@dataclass
+class AlertReconciler:
+    """Keeps alert signals in step with Alertmanager, both ways.
+
+    The webhook is the fast path, but it can miss things. Both were seen live:
+    - **Resolved, never sent:** Alertmanager keeps active alerts in memory. If it
+      restarts while an alert fires and the alert then stops, no "resolved" is
+      sent. A firing ``prom_alert`` signal whose fingerprint is missing from the
+      active alerts on two passes in a row (and older than ``min_age``) is
+      resolved, saying why.
+    - **Firing, never sent:** its notification log survives a restart. A new
+      episode of an alert it had notified before is taken as a repeat, and not
+      sent until ``repeat_interval``. An active alert with no firing signal,
+      firing for at least ``take_in_after`` (by then the webhook would have
+      delivered it), is taken in here, exactly as the webhook would have (same
+      idempotent upsert). Taking alerts any sooner races the webhook: an alert
+      that resolves within ``group_wait`` is then never notified at all, and
+      its signal could only be resolved here, minutes later.
+
+    If Alertmanager can't be reached, nothing changes.
+    """
+
+    fetch: ActiveFetch
+    min_age: timedelta = timedelta(minutes=5)
+    take_in_after: timedelta = timedelta(minutes=2)
+    missing: set[uuid.UUID] = field(default_factory=set)
+
+    async def run(self, db: AsyncSession, *, now: datetime) -> list[uuid.UUID]:
+        """Returns the signals it resolved."""
+        try:
+            alerts = await self.fetch()
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            self.missing.clear()  # no answer: no evidence either way
+            return []
+        active = {a["fingerprint"] for a in alerts}
+        await self._take_in(db, alerts, now=now)
+        firing = (
+            await db.scalars(
+                select(Signal).where(
+                    Signal.kind == SignalKind.PROM_ALERT,
+                    Signal.status == SignalStatus.FIRING,
+                    Signal.received_at <= now - self.min_age,
+                )
+            )
+        ).all()
+        resolved: list[uuid.UUID] = []
+        still_missing: set[uuid.UUID] = set()
+        for signal in firing:
+            if signal.fingerprint in active:
+                continue
+            if signal.id in self.missing:
+                signal.status = SignalStatus.RESOLVED
+                signal.ends_at = now
+                signal.updated_at = now
+                signal.payload = {
+                    **signal.payload,
+                    "resolved_because": "no longer active in Alertmanager",
+                }
+                resolved.append(signal.id)
+            else:
+                still_missing.add(signal.id)
+        self.missing = still_missing
+        if resolved:
+            log.info("alert_signals_reconciled", resolved=len(resolved))
+        return resolved
+
+    async def _take_in(
+        self, db: AsyncSession, alerts: list[dict[str, Any]], *, now: datetime
+    ) -> None:
+        known = set(
+            (
+                await db.scalars(
+                    select(Signal.fingerprint).where(
+                        Signal.kind == SignalKind.PROM_ALERT,
+                        Signal.status == SignalStatus.FIRING,
+                        Signal.fingerprint.in_([a["fingerprint"] for a in alerts]),
+                    )
+                )
+            ).all()
+        )
+        taken = 0
+        for raw in alerts:
+            if raw["fingerprint"] in known or raw.get("status", {}).get("state") != "active":
+                continue
+            try:
+                alert = AlertIn(
+                    status="firing",
+                    labels=raw.get("labels") or {},
+                    annotations=raw.get("annotations") or {},
+                    startsAt=raw["startsAt"],
+                    generatorURL=raw.get("generatorURL") or "",
+                    fingerprint=raw["fingerprint"],
+                )
+            except ValidationError:
+                continue
+            if alert.startsAt > now - self.take_in_after:
+                continue  # still the webhook's to deliver
+            _, outcome = await upsert_alert(db, alert)
+            taken += outcome == "created"
+        if taken:
+            log.info("alert_signals_taken_from_alertmanager", created=taken)

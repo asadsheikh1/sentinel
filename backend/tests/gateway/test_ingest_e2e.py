@@ -90,12 +90,20 @@ class Admin:
     def __init__(self, client: httpx.Client, csrf: str) -> None:
         self.client = client
         self.h = {"X-CSRF-Token": csrf}
+        self.created: list[str] = []
 
     def create(self, **body: Any) -> tuple[str, str]:
         payload = {"name": f"e2e-{uuid.uuid4().hex[:10]}", "kind": "otel_app", **body}
         r = self.client.post("/api/v1/integrations", json=payload, headers=self.h)
         assert r.status_code == 201, r.text
+        self.created.append(r.json()["integration"]["id"])
         return r.json()["integration"]["id"], r.json()["ingest_token"]
+
+    def cleanup(self) -> None:
+        """Disable what this module created: left running, each goes stale and, from
+        Step 12, opens a telemetry-gap incident on the stack the tests ran against."""
+        for iid in self.created:
+            self.client.delete(f"/api/v1/integrations/{iid}", headers=self.h)
 
     def get(self, path: str) -> Any:
         r = self.client.get(path)
@@ -120,7 +128,11 @@ def admin() -> Iterator[Admin]:
     with httpx.Client(base_url=API, timeout=20) as client:
         r = client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD})
         assert r.status_code == 200, r.text
-        yield Admin(client, r.json()["csrf_token"])
+        admin = Admin(client, r.json()["csrf_token"])
+        try:
+            yield admin
+        finally:
+            admin.cleanup()
 
 
 @pytest.fixture(scope="module")

@@ -7,7 +7,7 @@
 - **Safe by design (planned).** Untrusted code will run only in network-isolated rootless [Podman](https://podman.io) sandboxes. Nothing is merged or deployed automatically.
 - **Measured, not claimed (planned).** AI quality will be scored against fault-injection scenarios on the [AVIRO demo shop](https://github.com/asadsheikh1/aviro-shop).
 
-> **Status: in active development (Step 11 of 35 in review, 23 Nov 2026).** Built: the telemetry pipeline (agent, prober, OTLP gateway, Prometheus/Loki/Jaeger, query adapters with redaction), auth (Argon2id, RBAC, API keys, audit log) and the first detection layer (alert rule packs, signals, deployment and GitHub webhook ingestion, log error grouping by fingerprint). Planned: LangGraph root-cause agents, pgvector incident memory, the repair sandbox, the prompt-injection test suite and published precision/recall. See the [roadmap](docs/4-plan/1-roadmap.md) and [step reports](docs/progress/).
+> **Status: in active development (Step 12 of 35 in review, 25 Nov 2026).** Built: the telemetry pipeline (agent, prober, OTLP gateway, Prometheus/Loki/Jaeger, query adapters with redaction), auth (Argon2id, RBAC, API keys, audit log) and the first detection layer (alert rule packs, signals, deployment and GitHub webhook ingestion, log error grouping by fingerprint, and entity-aware correlation into incidents with severity, lifecycle and an append-only timeline). Planned: LangGraph root-cause agents, pgvector incident memory, the repair sandbox, the prompt-injection test suite and published precision/recall. See the [roadmap](docs/4-plan/1-roadmap.md) and [step reports](docs/progress/).
 
 ## What's built vs planned
 

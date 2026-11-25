@@ -100,6 +100,19 @@ connectors:
       sentinel.telemetry.datapoints:
         description: Metric data points received through the gateway
 
+  # Who calls whom: client/server span pairs are matched as they pass and
+  # counted per edge (traces_service_graph_request_total{client, server}).
+  # SENTINEL reads the edges from Prometheus as `uses` relations (Step 12, I12).
+  # Asking the trace store instead loads every trace of the window into memory:
+  # Jaeger was OOM-killed 61 times in 15 minutes doing that.
+  servicegraph:
+    dimensions: [deployment.environment.name]
+    latency_histogram_buckets: [1s]
+    store:
+      ttl: 10s
+      max_items: 5000
+    metrics_flush_interval: 30s
+
 exporters:
   otlp_http/prometheus:
     metrics_endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
@@ -134,8 +147,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource/identity, transform/normalise, redaction, batch]
-      exporters: [otlp_http/jaeger, count]
+      exporters: [otlp_http/jaeger, count, servicegraph]
     metrics/summary:
       receivers: [count]
       processors: [delta_to_cumulative, batch]
+      exporters: [otlp_http/prometheus]
+    metrics/servicegraph:
+      receivers: [servicegraph]
+      processors: [batch]
       exporters: [otlp_http/prometheus]
