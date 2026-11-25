@@ -57,6 +57,7 @@ If you approve, I'll change the default and update D2 in `docs/README.md` and AI
 1. **One gateway instance kept the current attempt's record on itself.** Two calls running at the same time could log each other's results. Each attempt now returns its own record, and a test runs 5 calls concurrently.
 2. **The benchmark's "6k-token" digest was really 12.4k tokens.** Log-like text tokenises at about 2 characters per token, not 4. The generator is now calibrated (measured: 6,150–6,290 tokens).
 3. **The live tests left HTTP connections open**, which pytest reports as an error. The fixture now closes its client.
+4. **CI: the migration failed on a DNS hiccup** (`ci-e2e`, first run of this PR). `wait_for_database` reached the database, then Alembic's own connection failed to resolve the name ("Temporary failure in name resolution"). This is the same Podman DNS flakiness as in Step 14. The upgrade now retries a connection failure (5 tries, 2 s apart). That's safe because Postgres DDL is transactional, and other errors are never retried.
 
 ## Decisions worth reviewing
 

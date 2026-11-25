@@ -120,3 +120,35 @@ def test_migrations_stop_waiting_after_the_timeout_and_never_retry_other_errors(
 
     with pytest.raises(ValueError, match="not a connection"):
         wait_for_database("u", ping=broken, sleep=lambda _: None)
+
+
+def test_a_migration_that_cannot_connect_is_retried() -> None:
+    import socket
+
+    import pytest
+
+    from sentinel.db.migrate import retry_connection
+
+    calls: list[int] = []
+    slept: list[float] = []
+
+    def flaky() -> None:
+        calls.append(1)
+        if len(calls) < 3:
+            raise socket.gaierror(-3, "Temporary failure in name resolution")
+
+    retry_connection(flaky, sleep=slept.append)
+    assert len(calls) == 3
+    assert slept == [2.0, 2.0]
+
+    def down() -> None:
+        raise ConnectionRefusedError
+
+    with pytest.raises(ConnectionRefusedError):
+        retry_connection(down, attempts=2, sleep=lambda _: None)
+
+    def broken() -> None:
+        raise ValueError("a bad migration")
+
+    with pytest.raises(ValueError, match="bad migration"):
+        retry_connection(broken, sleep=lambda _: None)
