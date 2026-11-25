@@ -85,6 +85,8 @@ class Integration(UUIDPrimaryKey, Timestamps, Base):
         server_default=IntegrationStatus.PENDING.value,
     )
     status_reason: Mapped[str | None] = mapped_column(Text)
+    # When the installer's test marker was seen in the logs (the log path works end to end).
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )

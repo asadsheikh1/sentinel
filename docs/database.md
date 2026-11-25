@@ -267,6 +267,7 @@
 | `expected_signals` | TEXT[] | no | `'{}'::text[]` |  |
 | `status` | integration_status | no | `pending` |  |
 | `status_reason` | TEXT | yes |  |  |
+| `verified_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
 | `created_by` | UUID | yes |  | → `users.id` ON DELETE SET NULL |
 | `id` | UUID | no | app: `uuid7()` | PK |
 | `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |

@@ -131,3 +131,6 @@ class AuditVerifyOut(BaseModel):
 class MetaOut(BaseModel):
     version: str
     env: str
+    ingest_endpoint: str = Field(
+        description="Where agents and apps send telemetry (OTLP over HTTP, with an ingest token)."
+    )

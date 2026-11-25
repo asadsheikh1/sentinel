@@ -109,7 +109,14 @@ def test_endpoint_down_is_visible_within_two_intervals(
 
     # Recovery.
     _podman("start", target)
-    eventually(lambda: _state(admin, cid) == "up", timeout=3 * INTERVAL + 10)
+    # A restarted container must be re-registered in Podman's DNS before the prober
+    # can resolve it again (slow at times in CI): recovery gets 6 intervals. Detection,
+    # the criterion, keeps its 2-interval limit above.
+    try:
+        eventually(lambda: _state(admin, cid) == "up", timeout=6 * INTERVAL)
+    except BaseException:
+        print("check after restart:", admin.get(f"/api/v1/checks/{cid}"))
+        raise
 
     # The endpoint entity is shared by every check of this URL (earlier runs too).
     events = [

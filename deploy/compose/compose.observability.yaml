@@ -168,6 +168,8 @@ services:
       SENTINEL_PROBE_STATE_INTERVAL_S: ${SENTINEL_PROBE_STATE_INTERVAL_S:-15}
       SENTINEL_ALERTMANAGER_KEY_FILE: /run/sentinel-alertmanager/api-key
       SENTINEL_ALERTMANAGER_URL: http://alertmanager:9093
+      # Where agents on other machines reach the ingest endpoint (shown in the setup wizard).
+      SENTINEL_AGENT_PUBLIC_ENDPOINT: ${SENTINEL_AGENT_PUBLIC_ENDPOINT:-http://127.0.0.1:4319}
       SENTINEL_ALERT_RECONCILE_INTERVAL_S: ${SENTINEL_ALERT_RECONCILE_INTERVAL_S:-60}
       SENTINEL_GITHUB_WEBHOOK_SECRET: ${SENTINEL_GITHUB_WEBHOOK_SECRET:-dev-only-github-webhook-secret}
       SENTINEL_GAP_INTERVAL_S: ${SENTINEL_GAP_INTERVAL_S:-30}

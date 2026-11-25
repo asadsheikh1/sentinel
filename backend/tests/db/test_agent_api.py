@@ -138,7 +138,8 @@ def test_setup_gives_install_commands_without_the_token(settings: Settings) -> N
         body = r.json()
         assert body["endpoint"] == "https://ingest.example.com"
         assert body["install_command"] == (
-            "curl -fsSL https://ingest.example.com/agent/install.sh -o sentinel-agent-install.sh"
+            "curl -fsSL --retry 5 https://ingest.example.com/agent/install.sh"
+            " -o sentinel-agent-install.sh"
             " && sudo bash sentinel-agent-install.sh --endpoint https://ingest.example.com"
             f" --integration {iid}"
         )

@@ -294,7 +294,7 @@ def validate_options(kind: IntegrationKind, config: dict[str, Any]) -> None:
 
 def install_command(endpoint: str, integration_id: uuid.UUID) -> str:
     return (
-        f"curl -fsSL {endpoint}/agent/install.sh -o sentinel-agent-install.sh && "
+        f"curl -fsSL --retry 5 {endpoint}/agent/install.sh -o sentinel-agent-install.sh && "
         f"sudo bash sentinel-agent-install.sh --endpoint {endpoint} "
         f"--integration {integration_id}"
     )

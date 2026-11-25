@@ -20,6 +20,17 @@ export type TimelineEvent = Schemas['TimelineEventOut']
 export type AttachedSignal = Schemas['AttachedSignal']
 export type EntityRef = Schemas['EntityRef']
 export type Permission = Schemas['Permission']
+export type Integration = Schemas['IntegrationOut']
+export type IntegrationKind = Schemas['IntegrationKind']
+export type IntegrationStatusValue = Schemas['IntegrationStatus']
+export type IntegrationStatus = Schemas['StatusOut']
+export type CheckItem = Schemas['CheckItemOut']
+export type AgentSetup = Schemas['AgentSetupOut']
+export type Entity = Schemas['EntityOut']
+export type EntityType = Schemas['EntityType']
+export type Relation = Schemas['RelationOut']
+export type ApiKey = Schemas['ApiKeyOut']
+export type Check = Schemas['CheckOut']
 
 export const CSRF_COOKIE = 'sentinel_csrf'
 export const CSRF_HEADER = 'X-CSRF-Token'

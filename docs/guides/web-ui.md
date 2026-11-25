@@ -8,6 +8,32 @@ on the same origin as the API: <http://127.0.0.1:3000> locally (`make ui`).
 | `/login` | Email and password. A wrong combination says only that; it never says which part was wrong |
 | `/incidents` | Active incidents by default, newest first. Filters for status, severity and service live in the URL, so a view can be bookmarked or shared. Refreshes every 10 s, so new incidents appear without a reload |
 | `/incidents/:id` | The incident, its signals (with why each one joined), the entities involved, the suspected deployment, and the timeline. Refreshes every 10 s |
+| `/integrations` | Health tiles (healthy, degraded, stale, waiting for data), what needs attention, and every integration |
+| `/integrations/new` | The catalogue: Linux host, Container host, Python app, HTTP check, Deployment webhook, Alertmanager (GitHub arrives with the repository steps) |
+| `/integrations/new/:kind` | The setup wizard (below) |
+| `/integrations/:id` | One integration: its checklist, signals, what it discovered, setup instructions. Token rotate and revoke, and disable, for admins |
+| `/inventory` | Everything discovered (hosts, containers, services, endpoints), which integration reports it, when it was last seen, and how it's connected |
+
+## Adding an integration
+
+1. **Configure:** a name and environment, plus what that kind needs. For a host: processes to watch and log files. For an app: its service name. For a check: the URL, the interval and the expected status codes.
+2. **Connect:**
+   - The ingest token, or for webhooks an API key, is shown **once**. SENTINEL keeps only a hash of it.
+   - Then the instructions for that kind:
+     - **Host:** save the token to a file, then run the installer, which reads it from there and never from the command line.
+     - **App:** the OpenTelemetry environment variables.
+     - **Deployments:** a `curl` step for CI.
+     - **Alertmanager:** a receiver.
+3. **Verify:** a checklist that ticks by itself as data arrives:
+
+| Kind | Items |
+|---|---|
+| Linux or container host | Data received with the token; metrics and logs arriving; the installer's test marker came through the log pipeline (it proves logs flow end to end); the machine (and its containers) in the inventory; *optional:* the agent runs the current configuration |
+| App | Data received with the token; each expected signal arriving; the service in the inventory |
+| HTTP check | The check is configured; the first probe ran (with its result) |
+| Deployment webhook, Alertmanager | A request arrived with the key |
+
+Only admins can add, rotate, revoke or disable. Every signed-in role can see the integrations, their checklists and the inventory.
 
 ## Roles
 

@@ -20,9 +20,9 @@ concurrency:
 
 jobs:
   e2e:
-    name: browser end to end (login → incidents, roles, XSS)
+    name: browser end to end (incidents, roles, XSS, onboarding)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3
@@ -42,6 +42,10 @@ jobs:
           echo "PODMAN_COMPOSE_PROVIDER=$(command -v podman-compose)" >> "$GITHUB_ENV"
       - name: Install Chromium for Playwright
         run: cd frontend && npx playwright install --with-deps chromium
+      - name: Build the disposable machine for the Linux-host onboarding test
+        run: |
+          podman build -t localhost/sentinel-test-ubuntu:24.04 \
+            -f backend/tests/agent/Containerfile.systemd backend/tests/agent
       - name: Start the stack and the web UI
         run: |
           if ! timeout 420 make stack-up-fast; then
@@ -59,6 +63,9 @@ jobs:
       - name: Browser tests
         env:
           CI: "1"
+          # The Linux-host onboarding test installs the agent on that machine, using only
+          # what the wizard shows (the installer downloads the agent, as for a user).
+          SENTINEL_E2E_AGENT: "1"
         run: make test-e2e
       - name: Playwright traces on failure
         if: failure()
@@ -71,4 +78,4 @@ jobs:
         if: failure()
         run: |
           podman ps -a
-          for c in web api; do echo "=== $c"; podman logs --tail 80 "sentinel_${c}_1" || true; done
+          for c in web api caddy gateway; do echo "=== $c"; podman logs --tail 80 "sentinel_${c}_1" || true; done
