@@ -78,7 +78,7 @@ class IncidentDetail(IncidentOut):
     investigation: None = None  # the investigator arrives in Step 17
 
 
-class EventOut(BaseModel):
+class TimelineEventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -199,17 +199,17 @@ async def update_incident(
     return _out(incident)
 
 
-@router.get("/{incident_id}/timeline", response_model=list[EventOut])
-async def get_timeline(incident_id: uuid.UUID, db: DbSession, _: Viewer) -> list[EventOut]:
+@router.get("/{incident_id}/timeline", response_model=list[TimelineEventOut])
+async def get_timeline(incident_id: uuid.UUID, db: DbSession, _: Viewer) -> list[TimelineEventOut]:
     """Every event, oldest first."""
     incident = await _get(db, incident_id)
-    return [EventOut.model_validate(e) for e in await service.timeline(db, incident.id)]
+    return [TimelineEventOut.model_validate(e) for e in await service.timeline(db, incident.id)]
 
 
-@router.post("/{incident_id}/comments", response_model=EventOut, status_code=201)
+@router.post("/{incident_id}/comments", response_model=TimelineEventOut, status_code=201)
 async def add_comment(
     incident_id: uuid.UUID, body: CommentIn, db: DbSession, who: Responder
-) -> EventOut:
+) -> TimelineEventOut:
     incident = await _get(db, incident_id)
     event = await service.comment(db, incident, body.text, actor=service.user_actor(who.user.id))
-    return EventOut.model_validate(event)
+    return TimelineEventOut.model_validate(event)

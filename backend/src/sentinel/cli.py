@@ -105,6 +105,30 @@ def _run_rbac_docs(args: argparse.Namespace) -> int:
     return write_or_check(app, args.output, check=args.check)
 
 
+def _run_openapi(args: argparse.Namespace) -> int:
+    """The API's OpenAPI schema, from which the frontend's typed client is generated."""
+    import json
+    import sys
+    from pathlib import Path
+
+    from sentinel.api.app import create_app
+    from sentinel.config import Settings
+
+    content = (
+        json.dumps(create_app(Settings(_env_file=None)).openapi(), indent=2, sort_keys=True) + "\n"
+    )
+    path = Path(args.output)
+    if args.check:
+        if not path.exists() or path.read_text() != content:
+            print(f"{path} is out of date. Run `make api-client`.", file=sys.stderr)
+            return 1
+        print(f"{path} is up to date.")
+        return 0
+    path.write_text(content)
+    print(f"Wrote {path}")
+    return 0
+
+
 def _run_telemetry(args: argparse.Namespace) -> int:
     from sentinel.config import get_settings
     from sentinel.telemetry import cli as telemetry_cli
@@ -164,6 +188,11 @@ def build_parser() -> argparse.ArgumentParser:
     rbac.add_argument("--output", default="../docs/rbac.md")
     rbac.add_argument("--check", action="store_true", help="fail if the file is out of date")
     rbac.set_defaults(func=_run_rbac_docs)
+
+    openapi = sub.add_parser("openapi", help="write the OpenAPI schema (for the frontend client)")
+    openapi.add_argument("--output", default="../frontend/src/api/openapi.json")
+    openapi.add_argument("--check", action="store_true", help="fail if the file is out of date")
+    openapi.set_defaults(func=_run_openapi)
 
     from sentinel.telemetry import cli as telemetry_cli
 

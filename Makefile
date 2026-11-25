@@ -92,12 +92,19 @@ stack-up-fast: ## Same, with short health intervals (used by test-gateway)
 	SENTINEL_PROBE_STATE_INTERVAL_S=2 SENTINEL_PROBER_CONFIG_REFRESH_S=3 SENTINEL_PROBER_HEARTBEAT_S=3 SENTINEL_GAP_INTERVAL_S=2 \
 	SENTINEL_ERROR_POLL_INTERVAL_S=3 SENTINEL_ERROR_POLL_LAG_S=5 SENTINEL_ERROR_GROUP_QUIET_S=60 \
 	SENTINEL_CORRELATION_INTERVAL_S=2 SENTINEL_DEPENDENCY_DISCOVERY_INTERVAL_S=5 SENTINEL_MITIGATE_AFTER_S=20 \
-	SENTINEL_ALERT_RECONCILE_INTERVAL_S=10 \
+	SENTINEL_ALERT_RECONCILE_INTERVAL_S=10 SENTINEL_LOGIN_RATE_LIMIT_PER_MINUTE=60 \
 	$(COMPOSE_OBS) up -d --force-recreate
 	$(WAIT_MIGRATE)
 
 stack-down: ## Stop everything (data kept)
-	$(COMPOSE_OBS) down
+	$(COMPOSE_OBS) --profile web down
+
+ui: ## Build the web UI and serve it with the API on http://127.0.0.1:3000 (needs stack-up)
+	$(FRONTEND) npm run build
+	$(COMPOSE_OBS) --profile web up -d --no-deps --force-recreate web
+
+test-e2e: ## Browser end-to-end tests (needs stack-up-fast and `make ui`)
+	$(FRONTEND) npx playwright test
 
 test-gateway: ## End-to-end ingestion tests (needs stack-up-fast)
 	$(BACKEND) uv run pytest -m gateway -v
@@ -138,6 +145,13 @@ rbac-docs: ## Regenerate docs/rbac.md (roles, scopes, every route's access rule)
 create-admin: ## Create the first admin: make create-admin email=you@example.com name="Your Name"
 	@test -n "$(email)" -a -n "$(name)" || (echo 'usage: make create-admin email=... name="..."'; exit 1)
 	$(BACKEND) uv run sentinel create-admin --email "$(email)" --name "$(name)"
+
+# openapi-typescript needs TypeScript 5's compiler API (the project is on TypeScript 7),
+# so it runs as a pinned tool rather than a project dependency.
+OPENAPI_TS = npx --yes -p openapi-typescript@7.13.0 -p typescript@5.9.3 openapi-typescript
+api-client: ## Regenerate the frontend's typed API client from the backend's OpenAPI schema
+	$(BACKEND) uv run sentinel openapi
+	$(FRONTEND) $(OPENAPI_TS) src/api/openapi.json -o src/api/schema.d.ts
 
 db-docs: ## Regenerate docs/database.md from the models
 	$(BACKEND) uv run sentinel db docs

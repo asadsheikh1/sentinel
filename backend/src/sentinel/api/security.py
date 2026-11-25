@@ -70,15 +70,38 @@ def _forbidden(detail: str = "You don't have permission to do this.") -> HTTPExc
     return HTTPException(status.HTTP_403_FORBIDDEN, detail)
 
 
-def client_ip(request: Request) -> str | None:
-    """The peer IP, or None if it isn't a valid address (unix socket, test client)."""
-    host = request.client.host if request.client else None
-    if not host:
+def _valid_ip(value: str | None) -> str | None:
+    if not value:
         return None
     try:
-        return str(ipaddress.ip_address(host))
+        return str(ipaddress.ip_address(value.strip()))
     except ValueError:
         return None
+
+
+def _from_trusted_proxy(request: Request) -> bool:
+    """SENTINEL's own Caddy (web UI, ingest) proves itself with the internal secret."""
+    presented = request.headers.get(INTERNAL_AUTH_HEADER)
+    if not presented:
+        return False
+    expected = request.app.state.settings.internal_auth_secret.get_secret_value()
+    return constant_time_equals(presented, expected)
+
+
+def client_ip(request: Request) -> str | None:
+    """The client's IP, or None if it isn't a valid address (unix socket, test client).
+
+    Behind SENTINEL's Caddy the peer is Caddy, so the address Caddy saw is taken
+    from ``X-Forwarded-For``, but only on a request that carries the internal
+    secret (Caddy sets that header and replaces any client copy of either).
+    Anyone else's ``X-Forwarded-For`` is ignored: it can't dodge the login rate
+    limit or put another address in the audit log.
+    """
+    if _from_trusted_proxy(request):
+        forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0]
+        if (ip := _valid_ip(forwarded)) is not None:
+            return ip
+    return _valid_ip(request.client.host if request.client else None)
 
 
 def auth_service(request: Request, db: DbSession) -> AuthService:

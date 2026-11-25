@@ -137,6 +137,21 @@ services:
       probe:
         aliases: [ingest.sentinel.internal]
 
+  # The web UI (Step 13): the built frontend and the API behind one origin.
+  # Opt-in (`make ui`), because it needs `frontend/dist` built first.
+  web:
+    image: docker.io/library/caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    profiles: [web]
+    environment:
+      SENTINEL_INTERNAL_AUTH_SECRET: ${SENTINEL_INTERNAL_AUTH_SECRET:-dev-only-internal-auth-secret-change-me-00}
+    volumes:
+      - ../caddy/web.Caddyfile:/etc/caddy/Caddyfile:ro,Z
+      - ../../frontend/dist:/srv:ro,Z
+    ports: ["127.0.0.1:3000:8080"] # 8080 is the demo shop's gateway
+    mem_limit: 64m
+    depends_on: [api]
+    restart: unless-stopped
+
   # Adds the settings the API needs once the gateway and stores are running.
   api:
     environment:
@@ -161,6 +176,7 @@ services:
       SENTINEL_ERROR_GROUP_QUIET_S: ${SENTINEL_ERROR_GROUP_QUIET_S:-600}
       SENTINEL_CORRELATION_INTERVAL_S: ${SENTINEL_CORRELATION_INTERVAL_S:-15}
       SENTINEL_MITIGATE_AFTER_S: ${SENTINEL_MITIGATE_AFTER_S:-300}
+      SENTINEL_LOGIN_RATE_LIMIT_PER_MINUTE: ${SENTINEL_LOGIN_RATE_LIMIT_PER_MINUTE:-5}
       SENTINEL_DEPENDENCY_DISCOVERY_INTERVAL_S: ${SENTINEL_DEPENDENCY_DISCOVERY_INTERVAL_S:-120}
     # Development: serve agent/ from the checkout, so installer edits need no rebuild.
     volumes:

@@ -3,6 +3,7 @@
 import itertools
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -219,3 +220,43 @@ def test_validation_errors_never_echo_input() -> None:
     assert r.status_code == 422
     assert "s3cr3t!" not in r.text
     assert r.json()["errors"]
+
+
+def _request(headers: dict[str, str], peer: str = "10.89.0.7") -> Any:
+    from types import SimpleNamespace
+
+    from starlette.requests import Request
+
+    from sentinel.config import Settings
+
+    app = SimpleNamespace(state=SimpleNamespace(settings=Settings(_env_file=None)))
+    scope = {
+        "type": "http", "method": "GET", "path": "/", "app": app, "client": (peer, 5000),
+        "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+    }  # fmt: skip
+    return Request(scope)
+
+
+def test_client_ip_believes_x_forwarded_for_only_from_sentinels_own_proxy() -> None:
+    from sentinel.api.security import client_ip
+    from sentinel.config import Settings
+
+    secret = Settings(_env_file=None).internal_auth_secret.get_secret_value()
+    via_caddy = {"X-Sentinel-Internal-Auth": secret, "X-Forwarded-For": "203.0.113.9"}
+    assert client_ip(_request(via_caddy)) == "203.0.113.9"
+    # Anyone else's header is ignored: no dodging the login limit, no forged audit IP.
+    assert client_ip(_request({"X-Forwarded-For": "203.0.113.9"})) == "10.89.0.7"
+    forged = {"X-Sentinel-Internal-Auth": "guess", "X-Forwarded-For": "203.0.113.9"}
+    assert client_ip(_request(forged)) == "10.89.0.7"
+    garbage = {"X-Sentinel-Internal-Auth": secret, "X-Forwarded-For": "not-an-ip"}
+    assert client_ip(_request(garbage)) == "10.89.0.7"
+
+
+def test_committed_openapi_schema_is_up_to_date() -> None:
+    """The frontend's typed client is generated from it (`make api-client`)."""
+    import argparse
+
+    from sentinel.cli import _run_openapi
+
+    args = argparse.Namespace(output="../frontend/src/api/openapi.json", check=True)
+    assert _run_openapi(args) == 0, "Run `make api-client`."
