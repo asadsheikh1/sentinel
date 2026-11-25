@@ -67,10 +67,30 @@ def wait_for_database(
             sleep(1.0)
 
 
+def retry_connection(
+    action: Callable[[], None],
+    *,
+    attempts: int = 5,
+    delay_s: float = 2.0,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Run ``action``, retrying a failure to connect (a name lookup can still flake
+    after :func:`wait_for_database` succeeded; seen in CI). Postgres DDL is
+    transactional, so a migration that failed part way left nothing behind."""
+    for attempt in range(1, attempts + 1):
+        try:
+            action()
+            return
+        except (OSError, OperationalError):
+            if attempt == attempts:
+                raise
+            sleep(delay_s)
+
+
 def upgrade(settings: Settings, revision: str = "head", *, url: str | None = None) -> None:
     target = _url(settings, url)
     wait_for_database(target)
-    command.upgrade(alembic_config(target), revision)
+    retry_connection(lambda: command.upgrade(alembic_config(target), revision))
 
 
 def downgrade(settings: Settings, revision: str, *, url: str | None = None) -> None:

@@ -44,10 +44,10 @@ test-db: ## Database tests against a throwaway pgvector Postgres (Testcontainers
 	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m db
 
 test-all: ## Every backend test (unit + db + integration) with the coverage gate
-	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "not observability and not gateway and not agent" --cov
+	$(BACKEND) $(INTEGRATION_ENV) uv run pytest -m "not observability and not gateway and not agent and not ollama" --cov
 
 lint: ## Lint, format check, type check, architecture contracts
-	$(BACKEND) uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports
+	$(BACKEND) uv run ruff check . ../scripts && uv run ruff format --check . ../scripts && uv run mypy && uv run mypy --strict ../scripts && uv run lint-imports
 	$(FRONTEND) npm run lint && npm run format:check && npm run typecheck
 
 format: ## Auto-format backend and frontend
@@ -112,6 +112,12 @@ test-gateway: ## End-to-end ingestion tests (needs stack-up-fast)
 test-agent: ## Install the SENTINEL Agent on a disposable Ubuntu 24.04 systemd machine (needs stack-up-fast)
 	podman build -q -t localhost/sentinel-test-ubuntu:24.04 -f backend/tests/agent/Containerfile.systemd backend/tests/agent
 	$(BACKEND) uv run pytest -m agent -v
+
+test-ollama: ## The LLM gateway against the local Ollama (needs `ollama serve` and qwen3:4b, nomic-embed-text:v1.5)
+	$(BACKEND) uv run pytest -m ollama -v
+
+bench-models: ## Benchmark the candidate models on this machine (needs `ollama serve` and the models pulled)
+	$(BACKEND) caffeinate -dims uv run python ../scripts/bench_models.py $(ARGS)
 
 test-obs: ## Push synthetic OTLP into each store and query it back (needs obs-up)
 	$(BACKEND) uv run pytest -m observability -v

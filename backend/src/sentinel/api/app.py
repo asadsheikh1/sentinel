@@ -41,6 +41,7 @@ from sentinel.ingestion.alertmanager_key import ensure_alertmanager_key
 from sentinel.integrations import jobs
 from sentinel.integrations.entities import prometheus_query
 from sentinel.integrations.gate import IngestGate
+from sentinel.llm import prune_payloads
 from sentinel.log import configure_logging
 from sentinel.prober.ssrf_guard import Guard
 
@@ -61,6 +62,13 @@ async def _reconcile(
 ) -> None:
     async with session_scope(session_factory) as db:
         await reconciler.run(db, now=datetime.now(UTC))
+
+
+async def _prune_llm_payloads(
+    session_factory: async_sessionmaker[AsyncSession], settings: Settings
+) -> None:
+    async with session_scope(session_factory) as db:
+        await prune_payloads(db, retention_days=settings.llm_payload_retention_days)
 
 
 def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None = None) -> FastAPI:
@@ -139,6 +147,16 @@ def create_app(settings: Settings | None = None, *, engine: AsyncEngine | None =
                         "alert_reconcile",
                         settings.alert_reconcile_interval_s,
                         lambda: _reconcile(app.state.session_factory, reconciler),
+                    )
+                )
+            )
+        if settings.background_jobs_enabled and settings.llm_store_payloads:
+            tasks.append(
+                asyncio.create_task(
+                    jobs.forever(
+                        "llm_payload_retention",
+                        settings.llm_payload_prune_interval_s,
+                        lambda: _prune_llm_payloads(app.state.session_factory, settings),
                     )
                 )
             )

@@ -29,10 +29,12 @@ from sentinel.db.models.integrations import (
     IntegrationSignalStatus,
     IntegrationStatus,
 )
+from sentinel.db.models.llm import LLM_ERROR_KINDS, LLMCall, LLMCallPayload
 from sentinel.db.models.platform import JOB_STATUSES, ActorType, AuditLog, Job
 
 __all__ = [
     "JOB_STATUSES",
+    "LLM_ERROR_KINDS",
     "SIGNALS",
     "ActorType",
     "ApiKey",
@@ -57,6 +59,8 @@ __all__ = [
     "IntegrationSignalStatus",
     "IntegrationStatus",
     "Job",
+    "LLMCall",
+    "LLMCallPayload",
     "PollWatermark",
     "ProbeState",
     "Session",

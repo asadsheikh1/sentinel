@@ -7,7 +7,7 @@ on:
       - "agent/**"
       - ".containerignore"
       - "deploy/compose/**"
-      - "scripts/db_roles.sql"
+      - "scripts/**"
       - "docs/database.md"
       - ".github/workflows/ci-backend.yml"
   push:
@@ -37,9 +37,9 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - name: ruff
-        run: uv run ruff check . && uv run ruff format --check .
+        run: uv run ruff check . ../scripts && uv run ruff format --check . ../scripts
       - name: mypy
-        run: uv run mypy
+        run: uv run mypy && uv run mypy --strict ../scripts
       - name: import-linter
         run: uv run lint-imports
       - name: pytest (unit; coverage reported, gate enforced on the full run below)
