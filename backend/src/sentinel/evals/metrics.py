@@ -5,7 +5,8 @@ incidents it opened (with their entities), the telemetry gaps it raised, and whe
 Definitions:
 
 - **True-positive incident:** opened within the run's observation window, and
-  involving one of the scenario's expected entities.
+  involving one of the scenario's expected entities (in a gap scenario, also an
+  incident carrying the environment's telemetry-gap signal).
 - **False positive:** any other incident opened in the window that involves the
   evaluation environment (AVIRO and its host). Incidents about anything else on
   the SENTINEL instance are counted separately and excluded.
@@ -23,6 +24,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,9 @@ class IncidentObs:
     entities: tuple[EntityObs, ...]
     primary_entity: EntityObs | None = None
     in_environment: bool = True  # involves AVIRO or its host
+    # Carries a telemetry-gap signal of this environment's integrations (gap
+    # signals have no entity, so such an incident may have none).
+    env_gap: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,8 @@ def entity_matches(entity: EntityObs, want: tuple[str, str]) -> bool:
         candidates.add(entity.key.split("/", 1)[-1].split("@", 1)[0].lower())
     elif kind == "host":  # also without a domain
         candidates.add(entity.key.split(".", 1)[0].lower())
+    elif kind == "endpoint":  # a probe target: matched by the host it probes
+        candidates.add(urlsplit(entity.key).hostname or entity.key.split(":", 1)[0].lower())
     else:  # container: compose names it <project>_<service>_<n>
         candidates.add(entity.display_name.lower().removeprefix("aviro_").rsplit("_", 1)[0])
     return name in candidates
@@ -126,7 +133,12 @@ def score_run(run: RunRecord) -> RunScore:
     in_window = [i for i in run.incidents if run.fault_start <= i.detected_at <= run.observe_end]
     outside = [i for i in in_window if not i.in_environment]
     inside = [i for i in in_window if i.in_environment]
-    tps = [i for i in inside if exp.expect_incident and involves(i, exp.entities)]
+    tps = [
+        i
+        for i in inside
+        if exp.expect_incident
+        and (involves(i, exp.entities) or (exp.gap is not None and i.env_gap))
+    ]
     fps = [i for i in inside if i not in tps]
     first = min(tps, key=lambda i: i.detected_at) if tps else None
     ttd = (first.detected_at - run.fault_start).total_seconds() if first else None

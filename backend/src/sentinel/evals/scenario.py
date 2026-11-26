@@ -128,9 +128,10 @@ Step = Annotated[
 
 
 class EntityMatch(_Strict):
-    """An entity an incident should involve: a service or container by name, or the host."""
+    """An entity an incident should involve: a service or container by name, the host,
+    or an endpoint (a probe target) by the host it probes."""
 
-    type: Literal["service", "container", "host"]
+    type: Literal["service", "container", "host", "endpoint"]
     name: str = Field(min_length=1, max_length=100)
 
 

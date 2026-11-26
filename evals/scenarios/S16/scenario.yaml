@@ -16,6 +16,8 @@ detection:
   entities:
   - type: host
     name: aviro-host
+  - type: endpoint
+    name: aviro-host
   gap:
     classification: host_or_network_down
     severity: critical

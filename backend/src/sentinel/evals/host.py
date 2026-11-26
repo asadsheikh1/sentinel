@@ -22,6 +22,7 @@ GATEWAY = "http://127.0.0.1:8080"
 FILL_FILE = "/var/lib/containers/sentinel-eval-fill"
 CPU_UNIT = "sentinel-eval-cpuhog"
 LOCUST_IMAGE = "docker.io/locustio/locust:2.47.0"  # as in AVIRO's compose.yaml
+LOADGEN = "sentinel-eval-shoppers"
 COMPOSE = "podman-compose -f compose.yaml -f compose.sentinel.yaml"
 EVENT_PREFIX = "deployment event (SENTINEL webhook not configured): "
 
@@ -39,8 +40,9 @@ class Deployment:
 
 
 class AviroHost:
-    def __init__(self, script: Path, *, machine: str = MACHINE) -> None:
+    def __init__(self, script: Path, locustfile: Path, *, machine: str = MACHINE) -> None:
         self.script = script
+        self.locustfile = locustfile  # AVIRO's, at the ref the host runs
         self.machine = machine
 
     # ------------------------------------------------------------ plumbing
@@ -74,6 +76,7 @@ class AviroHost:
             raise HostError(f"aviro-host up failed: {done.stderr[-1500:]}")
 
     def down(self) -> None:
+        self.load(0)
         subprocess.run([str(self.script), "down"], capture_output=True, timeout=300, check=False)
 
     def running(self) -> bool:
@@ -160,18 +163,21 @@ class AviroHost:
     def load(self, users: int) -> None:
         """(Re)start the synthetic shoppers with this many users; 0 stops them.
 
-        The same image, locustfile and arguments as AVIRO's ``loadgen`` service, run
-        directly: the host's podman-compose (1.0.6) has no ``--profile``.
+        Shoppers come from outside, as real traffic does: AVIRO's own Locust image
+        and locustfile, run next to SENTINEL (not on the AVIRO host, whose agent
+        would collect Locust's console output as the host's logs), through the
+        host's edge port.
         """
-        self.run("podman", "rm", "-f", "-t", "2", "aviro_loadgen_1", check=False)
+        self._podman("rm", "-f", "-t", "2", LOADGEN, timeout_s=60, check=False)
         if users <= 0:
             return
-        self.run(
-            "podman", "run", "-d", "--name", "aviro_loadgen_1", "--network", "aviro_default",
-            "-v", f"{AVIRO_DIR}/loadgen/locustfile.py:/mnt/locustfile.py:ro",
+        self._podman(
+            "run", "-d", "--name", LOADGEN, "--network", "sentinel-ingest",
+            "-v", f"{self.locustfile}:/mnt/locustfile.py:ro,z",
             LOCUST_IMAGE, "-f", "/mnt/locustfile.py", "--headless",
-            "--host", "http://gateway:8000", "-u", str(int(users)), "-r", "5", "--run-time", "48h",
-            timeout_s=120,
+            "--host", f"http://{self.machine}:8081", "-u", str(int(users)), "-r", "5",
+            "--run-time", "48h",
+            timeout_s=120, check=True,
         )  # fmt: skip
 
     # ----------------------------------------------------------------- host

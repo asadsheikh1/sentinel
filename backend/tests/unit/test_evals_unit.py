@@ -87,6 +87,16 @@ def run(
         ),
         (VALKEY, ("container", "valkey"), True),
         (VALKEY, ("container", "valkey-2"), False),
+        (
+            EntityObs("endpoint", "http://aviro-host:8081/api/health", "eval-check"),
+            ("endpoint", "aviro-host"),
+            True,
+        ),
+        (
+            EntityObs("endpoint", "http://shop.example.com/", "check"),
+            ("endpoint", "aviro-host"),
+            False,
+        ),
     ],
 )
 def test_entity_matches(entity: EntityObs, want: tuple[str, str], match: bool) -> None:
@@ -192,6 +202,25 @@ def test_gap_classification_and_no_service_incident() -> None:
     score = metrics.score_run(wrong)
     assert score.gap_correct is False
     assert score.no_service_incident_ok is False
+
+
+def test_a_gap_incident_without_entities_counts_in_a_gap_scenario() -> None:
+    gap_incident = IncidentObs(
+        id="g", ref="INC-9", detected_at=T0 + timedelta(seconds=300),
+        started_at=T0 + timedelta(seconds=300), severity="SEV2", status="open",
+        service_name=None, entities=(), env_gap=True,
+    )  # fmt: skip
+    host_down = run(
+        gap_incident,
+        entities=(("host", "aviro-host"),),
+        gap=("host_or_network_down", "critical"),
+        deadline_s=480,
+        observe_s=540,
+    )
+    score = metrics.score_run(host_down)
+    assert (score.true_positives, score.detected, score.ttd_s) == (1, True, 300)
+    # Outside a gap scenario the same incident is not a true positive.
+    assert metrics.score_run(run(gap_incident)).true_positives == 0
 
 
 def test_harness_error_makes_a_run_invalid() -> None:

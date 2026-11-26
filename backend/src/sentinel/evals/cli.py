@@ -58,8 +58,22 @@ def _config(args: argparse.Namespace) -> Any:
         results_dir=root / "evals" / "results",
         fixtures_dir=root / "evals" / "fixtures",
         host_script=root / "evals" / "host" / "aviro-host.sh",
+        locustfile=_locustfile(root),
         record_fixtures=not getattr(args, "no_fixtures", False),
     )
+
+
+def _locustfile(root: Path) -> Path:
+    """AVIRO's locustfile at the ref the host runs (AVIRO_REF), copied where Podman can mount it."""
+    ref = os.environ.get("AVIRO_REF", "main")
+    out = subprocess.run(
+        ["git", "-C", str(root.parent / "aviro-shop"), "show", f"{ref}:loadgen/locustfile.py"],
+        capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    path = root / "evals" / ".work" / "locustfile.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(out.stdout)
+    return path
 
 
 def _machine() -> str:

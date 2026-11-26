@@ -78,6 +78,7 @@ class SuiteConfig:
     cooldown_max_s: float = 900
     healthy_timeout_s: float = 300
     record_fixtures: bool = True
+    locustfile: Path = Path("locustfile.py")
 
 
 @dataclass
@@ -112,13 +113,14 @@ class Runner:
         self.cfg = config
         self.settings = settings
         self.api = SentinelClient(config.api_url, config.email, config.password)
-        self.host = AviroHost(config.host_script)
+        self.host = AviroHost(config.host_script, config.locustfile)
         self.env: Environment | None = None
         self.deployed_ref = "main"
         self._entity_cache: dict[str, set[str]] = {}
 
     # ========================================================= environment
     def setup(self) -> Environment:
+        self.disable_leftovers()
         tag = short_id()
         app_id, app_token = self.api.create_integration(
             name=f"eval-aviro-app-{tag}", kind="otel_app", environment="dev",
@@ -126,7 +128,6 @@ class Runner:
         )  # fmt: skip
         host_id, host_token = self.api.create_integration(
             name=f"eval-aviro-host-{tag}", kind="container_host", environment="dev",
-            config={"watched_processes": ["postgres", "valkey-server"]},
             expected_signals=["metrics", "logs"],
         )  # fmt: skip
         check_integration, _ = self.api.create_integration(
@@ -166,6 +167,18 @@ class Runner:
         }
         self.env = env
         return env
+
+    def disable_leftovers(self) -> list[str]:
+        """Earlier suite runs' integrations: left enabled, each would go stale and raise gaps."""
+        disabled = []
+        for integration in self.api.json("GET", "/api/v1/integrations"):
+            if (
+                integration["name"].startswith("eval-aviro-")
+                and integration["status"] != "disabled"
+            ):
+                self.api.disable_integration(str(integration["id"]))
+                disabled.append(integration["name"])
+        return disabled
 
     def _time_to_ready(
         self, integration_id: str, started: float, timeout_s: float = 600
@@ -233,14 +246,29 @@ class Runner:
                     entities=entities,
                     primary_entity=primary,
                     in_environment=in_env,
+                    env_gap=any(
+                        s["kind"] == "telemetry_gap"
+                        and s.get("source_integration_id") in self.environment.integration_ids
+                        for s in detail["signals"]
+                    ),
                 )
             )
         return found
 
-    def observe_gaps(self, since: datetime) -> list[metrics.GapObs]:
+    def observe_gaps(self, since: datetime, until: datetime) -> list[metrics.GapObs]:
+        """Gaps of this environment active during the window.
+
+        A gap that recurs within 10 minutes is *reopened* (same signal, its first
+        start kept), so gaps are selected by being active in the window, not by
+        when they first started.
+        """
         gaps = []
-        for s in self.api.signals_since(since, kind="telemetry_gap"):
+        for s in self.api.signals_since(since - timedelta(hours=1), kind="telemetry_gap"):
             if s.get("source_integration_id") not in self.environment.integration_ids:
+                continue
+            ended = datetime.fromisoformat(s["ends_at"]) if s.get("ends_at") else None
+            started = datetime.fromisoformat(s["starts_at"])
+            if started > until or (ended is not None and ended < since):
                 continue
             gaps.append(
                 metrics.GapObs(
@@ -334,6 +362,25 @@ class Runner:
         self.host.load(load_users)
         return notes
 
+    def clear_before_fault(self, env_entities: set[str]) -> list[str]:
+        """No active incident about the environment may be left to absorb this run's signals."""
+        notes = []
+        if not self.wait_quiet(now() - timedelta(hours=6), env_entities):
+            notes.append("signals about the environment still firing at the fault start")
+        for incident in self.api.json(
+            "GET", "/api/v1/incidents", params={"status": sorted(ACTIVE), "limit": 200}
+        ):
+            detail = self.api.incident(str(incident["id"]))
+            about_env = any(str(e["id"]) in env_entities for e in detail["entities"]) or any(
+                s.get("source_integration_id") in self.environment.integration_ids
+                for s in detail["signals"]
+            )
+            if about_env:
+                self.api.set_incident_status(str(incident["id"]), "resolved", "evaluation baseline")
+                self.api.set_incident_status(str(incident["id"]), "closed", "evaluation baseline")
+                notes.append(f"closed leftover {incident['ref']}")
+        return notes
+
     def close_incidents(self, since: datetime, tps: set[str], note: str) -> None:
         for incident in self.api.incidents_since(since):
             if incident["status"] not in ACTIVE:
@@ -345,11 +392,17 @@ class Runner:
                 self.api.set_incident_status(incident["id"], "false_positive", note)
 
     def wait_quiet(self, since: datetime, env_entities: set[str]) -> bool:
-        """Until no signal about the environment is firing (bounded)."""
+        """Until no alert or telemetry gap about the environment is firing (bounded).
+
+        Error-group signals are left out: they resolve on their own quiet timer, and
+        a recurring one (noise) would otherwise hold every run to the limit. Any
+        incident still active is closed before the next fault anyway.
+        """
 
         def quiet() -> bool:
             return not any(
-                s["status"] == "firing" for s in self.environment_signals(since, env_entities)
+                s["status"] == "firing" and s["kind"] in ("prom_alert", "telemetry_gap")
+                for s in self.environment_signals(since, env_entities)
             )
 
         return wait_for(quiet, self.cfg.cooldown_max_s, every_s=15)
@@ -378,8 +431,9 @@ class Runner:
         fault_start = observe_end = started
         try:
             record["baseline_notes"] = self.baseline(scenario.load_users)
-            time.sleep(self.cfg.settle_s)
             env_entities = self.environment_entities()
+            record["baseline_notes"] += self.clear_before_fault(env_entities)
+            time.sleep(self.cfg.settle_s)
             fault_start = now()
             t0 = time.monotonic()
             record["inject"] = self.run_steps(list(scenario.inject), t0)
@@ -389,7 +443,7 @@ class Runner:
             observe_end = now()
             env_entities |= self.environment_entities()
             incidents = self.observe_incidents(fault_start, env_entities)
-            gaps = self.observe_gaps(fault_start)
+            gaps = self.observe_gaps(fault_start, observe_end)
             signals = [
                 {"kind": s["kind"], "title": s["title"], "severity": s["severity"],
                  "starts_at": s["starts_at"], "alertname": s.get("labels", {}).get("alertname")}
@@ -441,7 +495,7 @@ class Runner:
     # ============================================================ fixtures
     def record_fixtures(
         self, scenario: Scenario, repeat: int, start: datetime, end: datetime
-    ) -> str | None:
+    ) -> dict[str, Any]:
         """The telemetry around the fault, saved for replay (Step 17+ collectors)."""
         path = self.cfg.fixtures_dir / scenario.id / f"run{repeat}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -452,31 +506,53 @@ class Runner:
                 *(e.name for e in scenario.detection.entities if e.type == "service"),
             }
         )
-        try:
-            asyncio.run(self._record(path, window, services))
-        except (TelemetryError, OSError) as exc:
-            log.warning("eval_fixtures_failed", scenario=scenario.id, error=type(exc).__name__)
-            return None
-        return str(path.relative_to(self.cfg.fixtures_dir.parent.parent))
+        failed = asyncio.run(self._record(path, window, services))
+        if failed:
+            log.warning("eval_fixtures_partial", scenario=scenario.id, failed=failed)
+        return {
+            "path": str(path.relative_to(self.cfg.fixtures_dir.parent.parent)),
+            "failed": failed,
+        }
 
-    async def _record(self, path: Path, window: TimeRange, services: list[str]) -> None:
+    async def _record(self, path: Path, window: TimeRange, services: list[str]) -> dict[str, str]:
+        """Each store on its own: one that fails doesn't lose the others' responses."""
         adapter = FixtureTelemetryAdapter(path, Mode.RECORD)
         limits = Limits()
         s = self.settings
-        async with (
-            LokiClient(s.loki_url, limits, transport=adapter.transport()) as loki,
-            PrometheusClient(s.prometheus_url, limits, transport=adapter.transport()) as prom,
-            JaegerClient(s.jaeger_url, limits, transport=adapter.transport()) as jaeger,
-        ):
-            for service in services:
-                selector = Selector(service=service, namespace=AVIRO_NAMESPACE)
-                await loki.logs(selector, window, min_severity=17, limit=200)
-                for template in (Template.REQUEST_RATE, Template.ERROR_RATIO, Template.LATENCY_P95):
-                    await prom.range(template, selector, window)
-                await jaeger.find(service, window, errors_only=True, limit=5)
-            host = Selector(host=HOST_NAME)
-            await loki.logs(host, window, min_severity=17, limit=200)
+        failed: dict[str, str] = {}
+
+        async def loki() -> None:
+            async with LokiClient(s.loki_url, limits, transport=adapter.transport()) as client:
+                for service in services:
+                    selector = Selector(service=service, namespace=AVIRO_NAMESPACE)
+                    await client.logs(selector, window, min_severity=17, limit=200)
+                await client.logs(Selector(host=HOST_NAME), window, min_severity=17, limit=200)
+
+        async def prometheus() -> None:
+            async with PrometheusClient(
+                s.prometheus_url, limits, transport=adapter.transport()
+            ) as client:
+                for service in services:
+                    selector = Selector(service=service, namespace=AVIRO_NAMESPACE)
+                    for template in (
+                        Template.REQUEST_RATE,
+                        Template.ERROR_RATIO,
+                        Template.LATENCY_P95,
+                    ):
+                        await client.range(template, selector, window)
+
+        async def jaeger() -> None:
+            async with JaegerClient(s.jaeger_url, limits, transport=adapter.transport()) as client:
+                for service in services:
+                    await client.find(service, window, errors_only=True, limit=5)
+
+        for name, store in (("loki", loki), ("prometheus", prometheus), ("jaeger", jaeger)):
+            try:
+                await store()
+            except (TelemetryError, OSError) as exc:
+                failed[name] = f"{type(exc).__name__}: {exc}"[:200]
         adapter.save()
+        return failed
 
 
 def _incident_json(i: metrics.IncidentObs) -> dict[str, Any]:
@@ -486,6 +562,7 @@ def _incident_json(i: metrics.IncidentObs) -> dict[str, Any]:
         "service_name": i.service_name, "in_environment": i.in_environment,
         "entities": [asdict(e) for e in i.entities],
         "primary_entity": asdict(i.primary_entity) if i.primary_entity else None,
+        "env_gap": i.env_gap,
     }  # fmt: skip
 
 
