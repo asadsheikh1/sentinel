@@ -119,6 +119,7 @@ The full report, with every run, is [report.md](../../evals/results/2026-11-26_0
 | `make test-all` (unit + db + integration) | 802 passed. 44 of them are new evaluation tests (metrics on synthetic ground truth, the scenario schema, every scenario file, results and the report, the soak scenario) and 2 are new gzip fixture tests |
 | Coverage | **86.3%, down from 94.0%** (the minimum is 85%). The scoring code (`metrics.py`, `scenario.py`, `results.py`) is at 98–100%. The runner, AVIRO host and API client (550 statements) have no unit tests: they drive real infrastructure, and the 49 real runs exercised them instead. |
 | The suite itself | 48 runs, then the soak: 0 harness errors |
+| CI on PR #16 | All 11 checks green on the first run |
 
 ## Afterwards
 
