@@ -67,3 +67,36 @@ async def test_fastapi_dependency_uses_app_session_factory() -> None:
     async for s in get_db_session(request):
         assert s is fake
     assert fake.events == ["open", "commit", "close"]
+
+
+async def test_commit_happens_before_the_response_is_sent() -> None:
+    """Regression (Step 16 finding): a client acting on a response must see its write.
+
+    FastAPI's default scope for a ``yield`` dependency ends it *after* the response
+    is sent, so a request right after login could miss the new session (401).
+    """
+    import httpx
+    from fastapi import FastAPI
+
+    from sentinel.api.deps import DbSession
+
+    fake = FakeSession()
+    app = FastAPI()
+    app.state.session_factory = _factory(fake)
+
+    @app.post("/write")
+    async def write(db: DbSession) -> dict[str, bool]:
+        return {"ok": True}
+
+    async def asgi(scope: Any, receive: Any, send: Any) -> None:
+        async def spy(message: dict[str, Any]) -> None:
+            if message["type"] == "http.response.start":
+                fake.events.append("response")
+            await send(message)
+
+        await app(scope, receive, spy)
+
+    transport = httpx.ASGITransport(app=asgi)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        assert (await client.post("/write")).status_code == 200
+    assert fake.events == ["open", "commit", "close", "response"]
