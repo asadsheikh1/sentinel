@@ -76,7 +76,7 @@ The build has 35 small steps in 7 milestones. After **every** step I stop, show 
 | # | Question | My recommendation |
 |---|---|---|
 | D1 | Put the demo shop **AVIRO** in its own GitHub repo (`aviro-shop`)? | Yes |
-| D2 | Default AI model | Qwen3 14B (confirmed after a speed test in step 15) |
+| D2 | Default AI model | **Qwen3 8B** (decided 2026-11-25 after the Step 15 benchmark: 14B swaps next to the stack on the M4; [benchmark](benchmarks/models-m4.md)). Revisit with the Step 26 quality evaluation |
 | D3 | AI on AWS (no GPU) | Small model live, plus labelled examples computed on your Mac |
 | D4 | AWS region, and always-on or scheduled? | Your region choice. Scheduled (~$35–45/mo) until public, then always-on (~$135–180/mo) |
 | D5 | OK to use Loki for logs (AGPL licence, used unmodified)? | Yes |

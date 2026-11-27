@@ -1,0 +1,45 @@
+# S05: Payments dependency slows down (injected latency)
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S05
+title: Payments dependency slows down (injected latency)
+kind: positive
+inject:
+- step: fault
+  service: payments
+  type: latency
+  params:
+    ms: 8000
+  duration_s: 900
+recover:
+- step: clear_faults
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: payments
+  - type: service
+    name: orders
+  - type: service
+    name: gateway
+  origin:
+    type: service
+    name: payments
+  signals:
+  - ServiceLatencyHigh
+  - ServiceHighErrorRatio
+ground_truth:
+  category: dependency_failure
+  services:
+  - payments
+  - orders
+  - gateway
+  keywords:
+  - payments
+  - latency
+  - timeout
+  - '504'
+  canonical: The payments service answers after 8 s, so checkouts time out in orders and the gateway returns
+    504; the origin is payments, not orders.
+  evidence_kinds:
+  - metric_comparison
+  - trace

@@ -2,7 +2,7 @@
 
 Needs ``ollama serve`` and the models below pulled. Uses the smallest
 candidate by default so it runs in about a minute; set
-``SENTINEL_TEST_OLLAMA_MODEL=qwen3:14b`` to try the default model.
+``SENTINEL_TEST_OLLAMA_MODEL=qwen3:8b`` to try the default model.
 """
 
 import os

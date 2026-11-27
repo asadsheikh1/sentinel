@@ -1,0 +1,42 @@
+# S02: Deploy introduces an N+1 query on the product listing
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S02
+title: Deploy introduces an N+1 query on the product listing
+kind: positive
+inject:
+- step: deploy
+  ref: scenario/S02-bad
+recover:
+- step: deploy
+  ref: scenario/S02-fix
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: inventory
+  - type: service
+    name: gateway
+  signals:
+  - ServiceLatencyHigh
+ground_truth:
+  category: code_change
+  services:
+  - inventory
+  - gateway
+  culprit:
+    ref: scenario/S02-bad
+    file: src/aviro/inventory/app.py
+    function: list_products
+  keywords:
+  - N+1
+  - list_products
+  - stock
+  - query
+  - latency
+  canonical: The inventory deploy (stock level on the product listing) runs one stock query per product,
+    so the listing's latency rises with the catalogue size.
+  evidence_kinds:
+  - deployment
+  - metric_comparison
+  - trace
+  repairable: true

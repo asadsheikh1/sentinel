@@ -59,6 +59,8 @@ ignore = []
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "S603", "S607"]  # assert and dummy passwords are fine in tests
 "src/sentinel/db/migrations/versions/**" = ["E501", "S608"]  # unwrapped; SQL from constants only
+"src/sentinel/evals/**" = ["S603", "S607"]
+"src/sentinel/evals/results.py" = ["E501", "S603", "S607"]  # Markdown table rows  # the harness drives podman and git on the dev machine (argv only)
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
@@ -109,10 +111,11 @@ fail_under = 85
 root_package = "sentinel"
 
 [[tool.importlinter.contracts]]
-name = "Layering: cli -> api -> ingestion -> detection -> incidents -> checks -> integrations -> events -> llm -> telemetry -> prober -> auth -> security -> db -> log -> config"
+name = "Layering: cli -> evals -> api -> ingestion -> detection -> incidents -> checks -> integrations -> events -> llm -> telemetry -> prober -> auth -> security -> db -> log -> config"
 type = "layers"
 layers = [
   "sentinel.cli",
+  "sentinel.evals",
   "sentinel.api",
   "sentinel.ingestion",
   "sentinel.detection",
@@ -149,4 +152,5 @@ forbidden_modules = [
   "sentinel.incidents",
   "sentinel.ingestion",
   "sentinel.api",
+  "sentinel.evals",
 ]

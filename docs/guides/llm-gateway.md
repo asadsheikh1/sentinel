@@ -6,7 +6,7 @@ Every model call in SENTINEL goes through `sentinel.llm` ([ADR-0002](../adr/0002
 
 ```bash
 ollama serve                      # native on the Mac, for Metal; listens on 127.0.0.1:11434
-ollama pull qwen3:14b             # the default model (decision D2, see the benchmark)
+ollama pull qwen3:8b              # the default model (decision D2, see the benchmark)
 ollama pull nomic-embed-text:v1.5 # embeddings
 make test-ollama                  # the gateway against the real runtime (uses qwen3:4b)
 make bench-models                 # the benchmark: docs/benchmarks/models-m4.md
@@ -55,7 +55,7 @@ A failure to write a log row is logged as a warning, and the call itself still s
 | Variable | Default | |
 |---|---|---|
 | `SENTINEL_OLLAMA_URL` | `http://127.0.0.1:11434` | |
-| `SENTINEL_LLM_MODEL` | `qwen3:14b` | decision D2 |
+| `SENTINEL_LLM_MODEL` | `qwen3:8b` | decision D2 |
 | `SENTINEL_LLM_EMBED_MODEL` | `nomic-embed-text:v1.5` | 768 dimensions |
 | `SENTINEL_LLM_TASK_MODELS`, `SENTINEL_LLM_TASK_THINKING` | `{}` | JSON |
 | `SENTINEL_LLM_NUM_CTX` | 16384 | |

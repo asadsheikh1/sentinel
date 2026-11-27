@@ -198,6 +198,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     telemetry_cli.add_parser(sub)
     sub.choices["telemetry"].set_defaults(func=_run_telemetry)
+
+    from sentinel.evals import cli as eval_cli
+
+    eval_cli.add_parser(sub)
+    sub.choices["eval"].set_defaults(func=eval_cli.dispatch)
     return parser
 
 

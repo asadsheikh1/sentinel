@@ -1,0 +1,51 @@
+# S12: Red herring: a harmless deploy during S05's payments slowdown
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S12
+title: 'Red herring: a harmless deploy during S05''s payments slowdown'
+kind: positive
+inject:
+- step: fault
+  service: payments
+  type: latency
+  params:
+    ms: 8000
+  duration_s: 900
+- step: deploy
+  ref: scenario/S12-deploy
+  after_s: 60
+recover:
+- step: clear_faults
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: payments
+  - type: service
+    name: orders
+  - type: service
+    name: gateway
+  origin:
+    type: service
+    name: payments
+  signals:
+  - ServiceLatencyHigh
+  - ServiceHighErrorRatio
+ground_truth:
+  category: dependency_failure
+  services:
+  - payments
+  - orders
+  - gateway
+  culprit:
+    ref: scenario/S12-deploy
+  keywords:
+  - payments
+  - latency
+  - timeout
+  canonical: Payments is slow (as S05). The deploy during the incident only changed documentation and
+    must not be blamed.
+  evidence_kinds:
+  - metric_comparison
+  - trace
+  - deployment
+notes: 'ground_truth.culprit.ref is the red herring: an RCA that blames it is wrong.'

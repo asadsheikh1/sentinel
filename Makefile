@@ -119,6 +119,18 @@ test-ollama: ## The LLM gateway against the local Ollama (needs `ollama serve` a
 bench-models: ## Benchmark the candidate models on this machine (needs `ollama serve` and the models pulled)
 	$(BACKEND) caffeinate -dims uv run python ../scripts/bench_models.py $(ARGS)
 
+eval-detection: ## The detection suite S01-S16 (needs stack-up, SENTINEL_EVAL_EMAIL/PASSWORD): make eval-detection REPEATS=3 [SCENARIOS="S01 S05"] [RESUME=evals/results/...]
+	$(BACKEND) caffeinate -dims uv run sentinel eval run --repeats $(or $(REPEATS),3) $(if $(SCENARIOS),--scenarios $(SCENARIOS)) $(if $(RESUME),--resume ../$(RESUME))
+
+eval-soak: ## Fault-free load for the false-positive rate: make eval-soak RESUME=evals/results/... [HOURS=2]
+	$(BACKEND) caffeinate -dims uv run sentinel eval soak --hours $(or $(HOURS),2) --resume ../$(RESUME)
+
+eval-report: ## Recompute metrics.json and report.md: make eval-report RESUME=evals/results/...
+	$(BACKEND) uv run sentinel eval report ../$(RESUME)
+
+eval-host-down: ## Remove the evaluation's AVIRO host and its disk
+	evals/host/aviro-host.sh down
+
 test-obs: ## Push synthetic OTLP into each store and query it back (needs obs-up)
 	$(BACKEND) uv run pytest -m observability -v
 

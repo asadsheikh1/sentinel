@@ -1,0 +1,42 @@
+# S11: Recurrence: an S01-like KeyError in another endpoint
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S11
+title: 'Recurrence: an S01-like KeyError in another endpoint'
+kind: positive
+inject:
+- step: deploy
+  ref: scenario/S11-bad
+recover:
+- step: deploy
+  ref: scenario/S11-fix
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: orders
+  - type: service
+    name: gateway
+  signals:
+  - ServiceHighErrorRatio
+  - error_group_new
+ground_truth:
+  category: code_change
+  services:
+  - orders
+  - gateway
+  culprit:
+    ref: scenario/S11-bad
+    file: src/aviro/orders/app.py
+    function: get_order
+  keywords:
+  - KeyError
+  - shipping
+  - get_order
+  - deploy
+  canonical: The orders deploy (shipping method in order details) reads a field the orders table doesn't
+    have, so GET /api/orders/{id} fails with KeyError.
+  evidence_kinds:
+  - deployment
+  - error_group
+  repairable: true
+notes: 'Needs AVIRO''s shoppers to view orders after buying (AVIRO PR #5).'

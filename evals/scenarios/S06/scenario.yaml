@@ -1,0 +1,40 @@
+# S06: Memory leak in inventory, leading to OOM kills and restarts
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S06
+title: Memory leak in inventory, leading to OOM kills and restarts
+kind: positive
+inject:
+- step: fault
+  service: inventory
+  type: memory_leak
+  params:
+    mb_per_s: 50
+    max_mb: 2000
+  duration_s: 900
+recover:
+- step: clear_faults
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: inventory
+  - type: container
+    name: inventory
+  signals:
+  - ContainerMemoryNearLimit
+  - ContainerRestarted
+ground_truth:
+  category: resource_exhaustion
+  services:
+  - inventory
+  keywords:
+  - memory
+  - leak
+  - OOM
+  - restart
+  - inventory
+  canonical: Inventory's memory grows until it hits its 300 MB limit and is OOM-killed, so it restarts
+    repeatedly and requests to it fail meanwhile.
+  evidence_kinds:
+  - metric_series
+  - log_excerpt

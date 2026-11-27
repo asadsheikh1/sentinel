@@ -1,0 +1,19 @@
+# S08: Negative: a 3x traffic spike with no fault
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S08
+title: 'Negative: a 3x traffic spike with no fault'
+kind: negative
+load_users: 10
+inject:
+- step: load
+  users: 30
+recover:
+- step: load
+  users: 10
+detection:
+  expect_incident: false
+  deadline_s: 600
+  observe_s: 600
+ground_truth:
+  category: none
+  canonical: 'Traffic triples and nothing is broken: nothing should be detected.'

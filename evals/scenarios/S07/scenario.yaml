@@ -1,0 +1,42 @@
+# S07: Valkey broker unavailable
+# Schema: backend/src/sentinel/evals/scenario.py
+id: S07
+title: Valkey broker unavailable
+kind: positive
+inject:
+- step: container
+  name: valkey
+  action: stop
+recover:
+- step: container
+  name: valkey
+  action: start
+detection:
+  expect_incident: true
+  entities:
+  - type: service
+    name: orders
+  - type: service
+    name: worker
+  - type: service
+    name: gateway
+  - type: container
+    name: valkey
+  signals:
+  - ServiceHighErrorRatio
+  - error_group_new
+ground_truth:
+  category: infrastructure
+  services:
+  - orders
+  - worker
+  keywords:
+  - valkey
+  - broker
+  - redis
+  - connection refused
+  canonical: The Valkey broker is down, so orders can't queue fulfilment (checkout fails) and the worker
+    loses its broker connection.
+  evidence_kinds:
+  - error_group
+  - log_excerpt
