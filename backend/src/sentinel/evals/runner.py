@@ -497,7 +497,7 @@ class Runner:
         self, scenario: Scenario, repeat: int, start: datetime, end: datetime
     ) -> dict[str, Any]:
         """The telemetry around the fault, saved for replay (Step 17+ collectors)."""
-        path = self.cfg.fixtures_dir / scenario.id / f"run{repeat}.json"
+        path = self.cfg.fixtures_dir / scenario.id / f"run{repeat}.json.gz"
         path.parent.mkdir(parents=True, exist_ok=True)
         window = TimeRange(start - timedelta(minutes=10), end)
         services = sorted(

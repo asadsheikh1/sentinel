@@ -7,9 +7,11 @@
 
 Requests are matched on method, path and query parameters, ignoring time
 parameters, so a replay at a different time still finds its responses. Recorded
-files are what the unit tests and (later) evaluation scenarios replay.
+files are what the unit tests and (later) evaluation scenarios replay. A path
+ending in ``.gz`` is read and written gzip-compressed.
 """
 
+import gzip
 import hashlib
 import json
 from enum import StrEnum
@@ -47,7 +49,10 @@ class FixtureTelemetryAdapter:
         if mode is Mode.REPLAY:
             if not path.exists():
                 raise FixtureMissingError(f"no fixture file at {path}")
-            self._entries = json.loads(path.read_text())["responses"]
+            raw = path.read_bytes()
+            if path.suffix == ".gz":
+                raw = gzip.decompress(raw)
+            self._entries = json.loads(raw)["responses"]
 
     def transport(
         self, upstream: httpx.AsyncBaseTransport | None = None
@@ -79,9 +84,11 @@ class FixtureTelemetryAdapter:
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps({"responses": self._entries}, indent=2, sort_keys=True) + "\n"
-        )
+        text = json.dumps({"responses": self._entries}, indent=2, sort_keys=True) + "\n"
+        if self.path.suffix == ".gz":  # mtime=0: the same responses give the same bytes
+            self.path.write_bytes(gzip.compress(text.encode(), mtime=0))
+        else:
+            self.path.write_text(text)
 
 
 class _RecordingTransport(httpx.AsyncBaseTransport):

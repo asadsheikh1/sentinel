@@ -1,0 +1,392 @@
+{
+  "summary": {
+    "runs": 49,
+    "invalid_runs": 0,
+    "incidents_true_positive": 33,
+    "incidents_false_positive": 38,
+    "incidents_outside_environment": 0,
+    "precision": 0.4648,
+    "recall": 0.5476,
+    "recall_across_repeats": {
+      "mean": 0.5476,
+      "min": 0.4286,
+      "max": 0.6429
+    },
+    "detected_after_deadline": 4,
+    "ttd_s": {
+      "median": 140.1,
+      "p90": 275.1,
+      "max": 298.2
+    },
+    "false_positives_per_hour": 1.2,
+    "fault_free_hours": 2.5,
+    "grouping_accuracy": 0.1905,
+    "origin_accuracy": 0.0,
+    "gap_classification_accuracy": 0.8333,
+    "gap_without_service_incident": 1.0
+  },
+  "per_scenario": {
+    "S00": {
+      "runs": 1,
+      "invalid_runs": 0,
+      "detected": 0,
+      "ttd_s": [],
+      "true_positives": [
+        0
+      ],
+      "false_positives": [
+        2
+      ],
+      "grouping_correct": 0,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S01": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 2,
+      "ttd_s": [
+        80.8,
+        218.8,
+        352.9
+      ],
+      "true_positives": [
+        1,
+        1,
+        1
+      ],
+      "false_positives": [
+        1,
+        5,
+        0
+      ],
+      "grouping_correct": 1,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S02": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 0,
+      "ttd_s": [],
+      "true_positives": [
+        0,
+        0,
+        0
+      ],
+      "false_positives": [
+        0,
+        1,
+        0
+      ],
+      "grouping_correct": 0,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S03": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 0,
+      "ttd_s": [],
+      "true_positives": [
+        0,
+        0,
+        0
+      ],
+      "false_positives": [
+        0,
+        1,
+        1
+      ],
+      "grouping_correct": 0,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S04": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 0,
+      "ttd_s": [
+        373.7
+      ],
+      "true_positives": [
+        0,
+        1,
+        0
+      ],
+      "false_positives": [
+        0,
+        1,
+        1
+      ],
+      "grouping_correct": 0,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S05": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 2,
+      "ttd_s": [
+        57.3,
+        133.3,
+        344.6
+      ],
+      "true_positives": [
+        1,
+        1,
+        1
+      ],
+      "false_positives": [
+        0,
+        1,
+        0
+      ],
+      "grouping_correct": 2,
+      "origin_correct": 0,
+      "gap_correct": null
+    },
+    "S06": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 3,
+      "ttd_s": [
+        57.1,
+        91.4,
+        186.3
+      ],
+      "true_positives": [
+        1,
+        1,
+        1
+      ],
+      "false_positives": [
+        1,
+        1,
+        2
+      ],
+      "grouping_correct": 0,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S07": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 2,
+      "ttd_s": [
+        183.9,
+        257.7
+      ],
+      "true_positives": [
+        0,
+        1,
+        1
+      ],
+      "false_positives": [
+        1,
+        1,
+        0
+      ],
+      "grouping_correct": 1,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S08": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 0,
+      "ttd_s": [],
+      "true_positives": [
+        0,
+        0,
+        0
+      ],
+      "false_positives": [
+        1,
+        0,
+        0
+      ],
+      "grouping_correct": 0,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S09": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 2,
+      "ttd_s": [
+        171.1,
+        276.1
+      ],
+      "true_positives": [
+        0,
+        1,
+        1
+      ],
+      "false_positives": [
+        2,
+        2,
+        0
+      ],
+      "grouping_correct": 1,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S10": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 3,
+      "ttd_s": [
+        53.3,
+        62.0,
+        62.7
+      ],
+      "true_positives": [
+        1,
+        1,
+        1
+      ],
+      "false_positives": [
+        1,
+        1,
+        0
+      ],
+      "grouping_correct": 1,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S11": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 2,
+      "ttd_s": [
+        161.0,
+        275.1,
+        399.4
+      ],
+      "true_positives": [
+        1,
+        1,
+        1
+      ],
+      "false_positives": [
+        0,
+        1,
+        1
+      ],
+      "grouping_correct": 1,
+      "origin_correct": null,
+      "gap_correct": null
+    },
+    "S12": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 0,
+      "ttd_s": [],
+      "true_positives": [
+        0,
+        0,
+        0
+      ],
+      "false_positives": [
+        1,
+        1,
+        1
+      ],
+      "grouping_correct": 0,
+      "origin_correct": 0,
+      "gap_correct": null
+    },
+    "S13": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 3,
+      "ttd_s": [
+        97.5,
+        140.1,
+        154.3
+      ],
+      "true_positives": [
+        2,
+        2,
+        2
+      ],
+      "false_positives": [
+        0,
+        0,
+        0
+      ],
+      "grouping_correct": 0,
+      "origin_correct": 0,
+      "gap_correct": null
+    },
+    "S14": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 1,
+      "ttd_s": [
+        298.2
+      ],
+      "true_positives": [
+        1,
+        0,
+        0
+      ],
+      "false_positives": [
+        0,
+        1,
+        1
+      ],
+      "grouping_correct": 1,
+      "origin_correct": 0,
+      "gap_correct": null
+    },
+    "S15": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 0,
+      "ttd_s": [],
+      "true_positives": [
+        0,
+        0,
+        0
+      ],
+      "false_positives": [
+        1,
+        1,
+        2
+      ],
+      "grouping_correct": 0,
+      "origin_correct": null,
+      "gap_correct": 2
+    },
+    "S16": {
+      "runs": 3,
+      "invalid_runs": 0,
+      "detected": 3,
+      "ttd_s": [
+        127.5,
+        139.8,
+        158.7
+      ],
+      "true_positives": [
+        2,
+        2,
+        2
+      ],
+      "false_positives": [
+        0,
+        0,
+        0
+      ],
+      "grouping_correct": 0,
+      "origin_correct": null,
+      "gap_correct": 3
+    }
+  },
+  "integration_time_to_first_data_s": {
+    "app": 111.5,
+    "host": 136.4,
+    "check": 61.0
+  }
+}

@@ -371,9 +371,10 @@ async def test_backend_failures_become_telemetry_errors() -> None:
 # ------------------------------------------------------------- record mode
 
 
-async def test_record_then_replay_round_trip(tmp_path: Path) -> None:
+@pytest.mark.parametrize("name", ["cassette.json", "cassette.json.gz"])
+async def test_record_then_replay_round_trip(tmp_path: Path, name: str) -> None:
     upstream = mock(lambda r: httpx.Response(200, json=_prom_body(1, 3)))
-    path = tmp_path / "cassette.json"
+    path = tmp_path / name
     recorder = FixtureTelemetryAdapter(path, Mode.RECORD)
     async with PrometheusClient("http://p", transport=recorder.transport(upstream)) as p:
         first = await p.range(Template.REQUEST_RATE, AVIRO, WINDOW)
@@ -384,6 +385,19 @@ async def test_record_then_replay_round_trip(tmp_path: Path) -> None:
     async with PrometheusClient("http://p", transport=player.transport()) as p:
         second = await p.range(Template.REQUEST_RATE, AVIRO, later)
     assert [s.labels for s in second.series] == [s.labels for s in first.series]
+
+
+async def test_gzip_fixture_is_compressed_and_deterministic(tmp_path: Path) -> None:
+    upstream = mock(lambda r: httpx.Response(200, json=_prom_body(1, 3)))
+    blobs = []
+    for name in ("a.json.gz", "b.json.gz"):
+        recorder = FixtureTelemetryAdapter(tmp_path / name, Mode.RECORD)
+        async with PrometheusClient("http://p", transport=recorder.transport(upstream)) as p:
+            await p.range(Template.REQUEST_RATE, AVIRO, WINDOW)
+        recorder.save()
+        blobs.append((tmp_path / name).read_bytes())
+    assert blobs[0][:2] == b"\x1f\x8b"  # gzip magic
+    assert blobs[0] == blobs[1]
 
 
 def test_request_key_ignores_time_but_not_the_query() -> None:

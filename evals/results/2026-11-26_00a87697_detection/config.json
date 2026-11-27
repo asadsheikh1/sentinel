@@ -1,0 +1,50 @@
+{
+  "suite": "detection",
+  "git_sha": "00a8769722695401a1c4b4271e2343088930154b",
+  "aviro_sha": "2fd29930207202e85f4dfb72df1cbd6aefcd43fa",
+  "machine": "Apple M4, 24 GB, Darwin 25.6.0",
+  "started_at": "2026-11-26T21:46:13+00:00",
+  "scenarios": [
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10",
+    "S11",
+    "S12",
+    "S13",
+    "S14",
+    "S15",
+    "S16"
+  ],
+  "repeats": 3,
+  "settings": {
+    "correlation_window_s": 900.0,
+    "mitigate_after_s": 300.0,
+    "error_poll_interval_s": 30.0
+  },
+  "environments": [
+    {
+      "time_to_first_data_s": {
+        "app": 111.5,
+        "host": 136.4,
+        "check": 61.0
+      },
+      "at": "2026-11-26T21:49:06+00:00"
+    }
+  ],
+  "environment": {
+    "time_to_first_data_s": {
+      "app": 111.5,
+      "host": 136.4,
+      "check": 61.0
+    },
+    "at": "2026-11-26T21:49:06+00:00"
+  },
+  "ended_at": "2026-11-27T08:12:02+00:00"
+}

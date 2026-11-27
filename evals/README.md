@@ -7,7 +7,7 @@ How well SENTINEL detects real faults in a real system, measured, not claimed ([
 | `scenarios/S01…S16/scenario.yaml` | One fault each: how to inject it, how to recover, what detection should see, and the ground truth for root cause. Schema: [`sentinel/evals/scenario.py`](../backend/src/sentinel/evals/scenario.py) |
 | `host/` | The **AVIRO host**: a disposable Ubuntu 24.04 machine running AVIRO in its own container engine, on its own disk |
 | `results/<date>_<sha>_detection/` | Committed results. `config.json` (git SHA, machine, settings), `per_run.jsonl` (every run), `metrics.json`, `report.md` |
-| `fixtures/<scenario>/run<n>.json` | The telemetry around each fault (Loki, Prometheus, Jaeger responses), recorded for replay by later steps |
+| `fixtures/<scenario>/run<n>.json.gz` | The telemetry around each fault (Loki, Prometheus, Jaeger responses), recorded for replay by later steps. Gzip-compressed: `FixtureTelemetryAdapter` reads and writes `.gz` paths |
 
 ## The environment
 
