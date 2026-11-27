@@ -1,7 +1,7 @@
 # Step 16 report: evaluation harness, scenarios S01–S16 and measured detection
 
 **Status:** ✅ built and tested. The detection suite was run for real: 16 scenarios × 3 repeats, plus a 2-hour soak. The numbers below are measured, and most of them are well below the PRD's targets (that is what this step is for).
-**PR:** (to be filled in)
+**PR:** [PR #16](https://github.com/asadsheikh1/sentinel/pull/16).
 **Date:** 2026-11-27
 
 ## What was built
