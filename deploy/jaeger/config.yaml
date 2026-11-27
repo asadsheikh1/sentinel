@@ -37,7 +37,7 @@ extensions:
             values: /badger/values
           ephemeral: false
           ttl:
-            spans: 168h # 7 days
+            spans: 48h # 2 days (7 days grew to 18 GB under eval load and Jaeger OOM-looped)
 
 receivers:
   otlp:

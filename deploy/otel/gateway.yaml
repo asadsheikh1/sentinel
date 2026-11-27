@@ -86,7 +86,26 @@ processors:
   delta_to_cumulative:
     max_stale: 15m
 
+  # Only what reaches the trace store is sampled (architecture: keep every error
+  # trace plus 10% of the rest). The count and servicegraph connectors still see
+  # every span. Unsampled, a day of eval load grew Jaeger's store to 18 GB.
+  # A trace is decided 10 s after its first span; policies are OR'ed.
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 20000
+    expected_new_traces_per_sec: 50
+    policies:
+      - name: errors
+        type: status_code
+        status_code: { status_codes: [ERROR] }
+      - name: ten-percent
+        type: probabilistic
+        probabilistic: { sampling_percentage: 10 }
+
 connectors:
+  # Hands processed traces to the traces/store pipeline, which samples them.
+  forward: {}
+
   # One small summary metric per resource, whatever the signal. Entity discovery
   # reads these, so logs-only and traces-only sources are discovered too.
   count:
@@ -147,7 +166,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource/identity, transform/normalise, redaction, batch]
-      exporters: [otlp_http/jaeger, count, servicegraph]
+      exporters: [forward, count, servicegraph]
+    traces/store:
+      receivers: [forward]
+      processors: [tail_sampling, batch]
+      exporters: [otlp_http/jaeger]
     metrics/summary:
       receivers: [count]
       processors: [delta_to_cumulative, batch]

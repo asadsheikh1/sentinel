@@ -62,7 +62,7 @@ async def test_adapters_read_back_gateway_data_by_integration(
     for path, body, tok in (
         ("/v1/logs", logs_body(resource, line, severity="ERROR"), token),
         ("/v1/metrics", metrics_body(resource, "e2e.adapter", {"run": run}), token),
-        ("/v1/traces", traces_body(resource, trace_id, f"op-{run}"), token),
+        ("/v1/traces", traces_body(resource, trace_id, f"op-{run}", error=True), token),
         ("/v1/logs", logs_body({"service.name": service}, f"other {run}"), other_token),
     ):
         assert send(http, path, body, tok).status_code == 200

@@ -4,9 +4,9 @@ SENTINEL keeps raw telemetry in four stores. From Step 6, everything reaches the
 
 | Store | Holds | Local URL | Retention | Memory limit |
 |---|---|---|---|---|
-| Prometheus 3.16 | Metrics (OTLP receiver) | http://127.0.0.1:9090 | 15 days / 4 GB | 768 MiB |
-| Loki 3.7 | Logs (OTLP endpoint) | http://127.0.0.1:3100 | 7 days | 640 MiB |
-| Jaeger 2.23 | Traces (OTLP, Badger) | UI and API http://127.0.0.1:16686, OTLP :4317 / :4318 | 7 days | 512 MiB |
+| Prometheus 3.16 | Metrics (OTLP receiver) | http://127.0.0.1:9090 | 15 days / 4 GB | 512 MiB |
+| Loki 3.7 | Logs (OTLP endpoint) | http://127.0.0.1:3100 | 7 days | 512 MiB |
+| Jaeger 2.23 | Traces (OTLP, Badger) | UI and API http://127.0.0.1:16686, OTLP :4317 / :4318 | 2 days | 768 MiB |
 | Alertmanager 0.35 | Alerts (from Prometheus rules, Step 10) | http://127.0.0.1:9093 | 5 days | 128 MiB |
 
 All ports are bound to `127.0.0.1`, so nothing is reachable from your network. Images are pinned by tag and digest in `deploy/compose/compose.observability.yaml`.

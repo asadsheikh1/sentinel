@@ -157,7 +157,7 @@ SENTINEL does **not** build its own time-series or log store. It relies on prove
 |---|---|---|
 | Logs | App (OTel SDK logging, JSON) **or** agent (`journald`, `filelog`, container log files) → OTLP/HTTPS → Caddy auth → gateway Collector (identity, OTTL normalisation, redaction) → Loki OTLP endpoint (labels: `service_name`, `host_name`, `sentinel_integration_id`, `level`; trace_id as structured metadata) | 7 days |
 | Metrics | App (OTel SDK) **or** agent (`hostmetrics`, `docker_stats` against the Podman/Docker API, `postgresql`, local Prometheus scrape) **or** prober/connectors → gateway → **Prometheus OTLP receiver** (pinned name translation; resource attributes promoted to labels) | 15 days |
-| Traces | App (OTel auto-instrumentation: FastAPI, httpx, SQLAlchemy, Celery) → agent or gateway (tail sampling: keep all error traces plus 10% of the rest) → Jaeger v2 (Badger storage) | 7 days |
+| Traces | App (OTel auto-instrumentation: FastAPI, httpx, SQLAlchemy, Celery) → agent or gateway (tail sampling: keep all error traces plus 10% of the rest) → Jaeger v2 (Badger storage) | 2 days |
 | Events | Webhooks, check-ins, connector change events, probe and integration state changes → `SentinelEvent` → Postgres `events` | 90 days |
 
 **Evidence is snapshotted.** When SENTINEL uses telemetry as evidence, it stores a redacted, size-capped copy in Postgres. Investigations and reports therefore stay verifiable after telemetry retention expires, and evaluation can replay them.
