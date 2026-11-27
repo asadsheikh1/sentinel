@@ -175,6 +175,10 @@ def score_run(run: RunRecord) -> RunScore:
     )
 
 
+def _round(value: float | None) -> float | None:
+    return None if value is None else round(value, 1)
+
+
 def percentile(values: Sequence[float], q: float) -> float | None:
     """Nearest-rank percentile (q in 0..100); None for no values."""
     if not values:
@@ -235,8 +239,8 @@ def summarise(scores: Sequence[RunScore]) -> dict[str, Any]:
         "detected_after_deadline": len(late),
         "ttd_s": {
             "median": round(statistics.median(ttds), 1) if ttds else None,
-            "p90": percentile(ttds, 90),
-            "max": max(ttds) if ttds else None,
+            "p90": _round(percentile(ttds, 90)),
+            "max": _round(max(ttds) if ttds else None),
         },
         "false_positives_per_hour": round(ff_fp / ff_hours, 3) if ff_hours else None,
         "fault_free_hours": round(ff_hours, 3),

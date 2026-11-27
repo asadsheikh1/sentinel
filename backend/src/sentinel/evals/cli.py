@@ -155,14 +155,11 @@ def run_eval(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_soak(args: argparse.Namespace) -> int:
-    from sentinel.evals import results
-    from sentinel.evals.runner import Runner
+def soak_scenario(hours: float) -> Any:
+    """The soak as a scenario: normal load, no faults, watched for ``hours``."""
     from sentinel.evals.scenario import Scenario
 
-    cfg = _config(args)
-    folder = args.resume
-    soak = Scenario.model_validate(
+    return Scenario.model_validate(
         {
             "id": "S00",
             "title": "Soak: normal load, no faults",
@@ -170,8 +167,8 @@ def run_soak(args: argparse.Namespace) -> int:
             "inject": [{"step": "load", "users": 10}],
             "detection": {
                 "expect_incident": False,
-                "deadline_s": args.hours * 3600,
-                "observe_s": args.hours * 3600,
+                "deadline_s": hours * 3600,
+                "observe_s": hours * 3600,
             },
             "ground_truth": {
                 "category": "none",
@@ -179,6 +176,15 @@ def run_soak(args: argparse.Namespace) -> int:
             },
         }
     )
+
+
+def run_soak(args: argparse.Namespace) -> int:
+    from sentinel.evals import results
+    from sentinel.evals.runner import Runner
+
+    cfg = _config(args)
+    folder = args.resume
+    soak = soak_scenario(args.hours)
     runner = Runner(cfg, Settings())
     try:
         env = runner.setup()

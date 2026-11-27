@@ -140,12 +140,16 @@ class GapExpectation(_Strict):
     severity: Literal["info", "warning", "critical"]
 
 
+MAX_OBSERVE_S = 12 * 3600
+
+
 class Detection(_Strict):
     expect_incident: bool
     # Recall counts an incident only if it was opened within the deadline.
-    deadline_s: float = Field(default=300, gt=0, le=3600)
+    # Up to 12 h: the soak is a scenario too.
+    deadline_s: float = Field(default=300, gt=0, le=MAX_OBSERVE_S)
     # How long to watch after the fault (>= deadline): late detections are recorded too.
-    observe_s: float = Field(default=420, gt=0, le=3600)
+    observe_s: float = Field(default=420, gt=0, le=MAX_OBSERVE_S)
     # Any of these makes an incident a true positive (if it overlaps the fault window).
     entities: list[EntityMatch] = Field(default_factory=list)
     # Where the fault starts, when it isn't the first expected entity's service.

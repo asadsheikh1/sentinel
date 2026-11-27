@@ -393,3 +393,19 @@ def test_folder_must_match_the_id(tmp_path: Path) -> None:
     (folder / "scenario.yaml").write_text(yaml.safe_dump(_minimal()))
     with pytest.raises(ValueError, match="folder name"):
         load(folder / "scenario.yaml")
+
+
+@pytest.mark.parametrize("hours", [0.5, 2, 12])
+def test_soak_scenario_validates_for_long_soaks(hours: float) -> None:
+    from sentinel.evals.cli import soak_scenario
+
+    soak = soak_scenario(hours)
+    assert soak.detection.observe_s == hours * 3600
+    assert not soak.detection.expect_incident
+
+
+def test_observe_window_is_capped() -> None:
+    from sentinel.evals.cli import soak_scenario
+
+    with pytest.raises(ValidationError):
+        soak_scenario(13)

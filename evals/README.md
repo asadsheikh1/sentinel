@@ -63,7 +63,7 @@ Incidents about anything else on the same SENTINEL (other integrations in a dev 
 make stack-up                       # normal intervals: realistic detection times
 export SENTINEL_EVAL_EMAIL=... SENTINEL_EVAL_PASSWORD=...   # a responder or admin
 export SENTINEL_AGENT_PACKAGE_DIR=...   # optional: cached agent downloads (slow network)
-make eval-detection REPEATS=3       # about 4 hours per repeat
+make eval-detection REPEATS=3       # about 3.5 hours per repeat (measured)
 make eval-soak RESUME=evals/results/<folder> HOURS=2
 make eval-report RESUME=evals/results/<folder>
 make eval-host-down
