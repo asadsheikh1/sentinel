@@ -15,4 +15,7 @@ async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
         yield session
 
 
-DbSession = Annotated[AsyncSession, Depends(get_db_session)]
+# scope="function": commit before the response is sent. FastAPI's default
+# ("request") ends a yield dependency after the response, so a client acting on
+# a response (a request right after login) could miss the write.
+DbSession = Annotated[AsyncSession, Depends(get_db_session, scope="function")]

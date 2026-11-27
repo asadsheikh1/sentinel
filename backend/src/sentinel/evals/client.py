@@ -35,13 +35,6 @@ class SentinelClient:
         if r.status_code != 200:
             raise SentinelError(f"login failed: HTTP {r.status_code}")
         self._csrf = r.json()["csrf_token"]
-        # SENTINEL commits a request's transaction after the response is sent (Step 16
-        # finding), so a request right after login can miss the new session. Wait for it.
-        for _ in range(20):
-            if self._http.get("/api/v1/auth/me").status_code == 200:
-                return
-            time.sleep(0.25)
-        raise SentinelError("login succeeded but the session never became usable")
 
     def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """One request; signs in again once if the session expired (long runs)."""
