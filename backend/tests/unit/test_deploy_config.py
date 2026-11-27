@@ -52,7 +52,7 @@ def test_retention_matches_plan() -> None:
     assert loki["compactor"]["retention_enabled"] is True
     jaeger = yaml.safe_load((DEPLOY / "jaeger" / "config.yaml").read_text())
     badger = jaeger["extensions"]["jaeger_storage"]["backends"]["badger_main"]["badger"]
-    assert badger["ttl"]["spans"] == "168h"
+    assert badger["ttl"]["spans"] == "48h"
     assert badger["ephemeral"] is False
 
 
@@ -60,3 +60,18 @@ def test_prometheus_otlp_name_translation_is_pinned() -> None:
     prom = yaml.safe_load((DEPLOY / "prometheus" / "prometheus.yml").read_text())
     assert prom["otlp"]["translation_strategy"] == "UnderscoreEscapingWithSuffixes"
     assert "sentinel.integration.id" in prom["otlp"]["promote_resource_attributes"]
+
+
+def test_traces_are_sampled_only_on_the_way_to_the_store() -> None:
+    """Counting and the service graph see every span; Jaeger gets errors plus 10%."""
+    gateway = yaml.safe_load((DEPLOY / "otel" / "gateway.yaml").read_text())
+    pipelines = gateway["service"]["pipelines"]
+    assert set(pipelines["traces"]["exporters"]) == {"forward", "count", "servicegraph"}
+    assert "tail_sampling" not in pipelines["traces"]["processors"]
+    store = pipelines["traces/store"]
+    assert store["receivers"] == ["forward"]
+    assert store["processors"][0] == "tail_sampling"
+    assert store["exporters"] == ["otlp_http/jaeger"]
+    policies = {p["name"]: p for p in gateway["processors"]["tail_sampling"]["policies"]}
+    assert policies["errors"]["status_code"]["status_codes"] == ["ERROR"]
+    assert policies["ten-percent"]["probabilistic"]["sampling_percentage"] == 10

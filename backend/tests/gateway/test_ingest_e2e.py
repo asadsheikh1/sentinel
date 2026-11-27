@@ -69,9 +69,9 @@ def logs_body(
     }
 
 
-def traces_body(resource: dict[str, str], trace_id: str, name: str) -> dict[str, Any]:
+def _span(trace_id: str, name: str, *, error: bool) -> dict[str, Any]:
     now = time.time_ns()
-    span = {
+    span: dict[str, Any] = {
         "traceId": trace_id,
         "spanId": secrets.token_hex(8),
         "name": name,
@@ -79,9 +79,28 @@ def traces_body(resource: dict[str, str], trace_id: str, name: str) -> dict[str,
         "startTimeUnixNano": str(now),
         "endTimeUnixNano": str(now + 1_000_000),
     }
+    if error:
+        span["status"] = {"code": 2}  # STATUS_CODE_ERROR
+    return span
+
+
+def traces_body(
+    resource: dict[str, str], trace_id: str, name: str, *, error: bool = False
+) -> dict[str, Any]:
+    """One span. The store keeps only 10% of traces without an error (tail sampling),
+    so a test that reads its trace back sends an error span."""
+    return many_traces_body(resource, [(trace_id, name, error)])
+
+
+def many_traces_body(
+    resource: dict[str, str], spans: list[tuple[str, str, bool]]
+) -> dict[str, Any]:
     return {
         "resourceSpans": [
-            {"resource": {"attributes": _attrs(resource)}, "scopeSpans": [{"spans": [span]}]}
+            {
+                "resource": {"attributes": _attrs(resource)},
+                "scopeSpans": [{"spans": [_span(t, n, error=e) for t, n, e in spans]}],
+            }
         ]
     }
 
@@ -234,7 +253,7 @@ def test_spoofed_identity_is_overwritten_on_every_signal(http: httpx.Client, adm
     for path, body in (
         ("/v1/metrics", metrics_body(resource, "e2e.spoof", {"run": run})),
         ("/v1/logs", logs_body(resource, f"spoof line {run}")),
-        ("/v1/traces", traces_body(resource, trace_id, f"spoof-span-{run}")),
+        ("/v1/traces", traces_body(resource, trace_id, f"spoof-span-{run}", error=True)),
     ):
         assert http.post(f"{INGEST}{path}", json=body, headers=spoof_headers).status_code == 200
 
@@ -255,6 +274,34 @@ def test_spoofed_identity_is_overwritten_on_every_signal(http: httpx.Client, adm
     attrs = eventually(trace_attrs)
     assert attrs["sentinel.integration.id"] == iid
     assert attrs["sentinel.integration.kind"] == "otel_app"
+
+
+def test_trace_store_keeps_errors_and_a_sample_of_the_rest(
+    http: httpx.Client, admin: Admin
+) -> None:
+    """Tail sampling: every error trace, about 10% of the others. Counting (entity
+    discovery) still sees every span, before sampling."""
+    _, token = admin.create()
+    run = uuid.uuid4().hex[:10]
+    resource = {"service.name": f"sampled-{run}"}
+    error_id = secrets.token_hex(16)
+    ok_ids = [secrets.token_hex(16) for _ in range(100)]
+    spans = [(error_id, "failed", True)] + [(t, "ok", False) for t in ok_ids]
+    assert send(http, "/v1/traces", many_traces_body(resource, spans), token).status_code == 200
+
+    def found(trace_id: str) -> bool:
+        return http.get(f"{JAEGER}/api/v3/traces/{trace_id}").status_code == 200
+
+    eventually(lambda: found(error_id))  # decided after 10 s, then batched
+    time.sleep(5)  # the rest were decided in the same pass
+    kept = sum(found(t) for t in ok_ids)
+    # Binomial(100, 0.1): outside 1..30 has a probability below 1e-4.
+    assert 1 <= kept <= 30, f"{kept} of 100 traces without an error were stored"
+
+    counted = eventually(
+        lambda: prom_series(http, f'sentinel_telemetry_spans_total{{service_name="sampled-{run}"}}')
+    )
+    assert float(counted[0]["value"][1]) == 101
 
 
 # ------------------------------------------------------------- normalisation

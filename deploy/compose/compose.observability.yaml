@@ -23,7 +23,7 @@ services:
       - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
       - ../prometheus/rules:/etc/prometheus/rules:ro,Z
     ports: ["127.0.0.1:9090:9090"]
-    mem_limit: 768m
+    mem_limit: 512m # was 768m; measured ~95 MB (2026-11-27 soak)
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
       interval: 5s
@@ -64,7 +64,7 @@ services:
       - lokidata:/loki
       - ../loki/loki.yaml:/etc/loki/loki.yaml:ro,Z
     ports: ["127.0.0.1:3100:3100"]
-    mem_limit: 640m
+    mem_limit: 512m # was 640m; measured ~165 MB (2026-11-27 soak)
     # No container healthcheck: the Loki image has no wget or shell. Readiness is GET /ready.
     restart: unless-stopped
     networks: [telemetry]
@@ -80,7 +80,7 @@ services:
       - "127.0.0.1:16686:16686" # query API v3 + UI
       - "127.0.0.1:4317:4317"   # OTLP gRPC (direct, dev/tests only)
       - "127.0.0.1:4318:4318"   # OTLP HTTP (direct, dev/tests only)
-    mem_limit: 512m
+    mem_limit: 768m # 512m OOM-looped on unsampled traces; sampled, it peaked at 307 MB over 2 h
     restart: unless-stopped
     networks: [telemetry]
 
